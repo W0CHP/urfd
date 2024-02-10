@@ -90,6 +90,7 @@ protected:
 	void PutDHTPeers();
 	void PutDHTClients();
 	void PutDHTUsers();
+	void SaveDHTState(const std::string &path) const;
 #endif
 
 	// threads

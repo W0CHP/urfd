@@ -16,6 +16,7 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+#include <csignal>
 #include <sys/stat.h>
 
 #include "Global.h"
@@ -28,15 +29,34 @@ SJsonKeys   g_Keys;
 CReflector  g_Reflector;
 CGateKeeper g_GateKeeper;
 CConfigure  g_Configure;
-CVersion    g_Version(3,1,1); // The major byte should only change if the interlink packet changes!
+CVersion    g_Version(3,1,2); // The major byte should only change if the interlink packet changes!
 CLookupDmr  g_LDid;
 CLookupNxdn g_LNid;
 CLookupYsf  g_LYtr;
 
 ////////////////////////////////////////////////////////////////////////////////////////
 
+void SigHandler(int sig)
+{
+	switch (sig)
+	{
+	case SIGINT:
+	case SIGHUP:
+	case SIGTERM:
+		std::cout << "caught a signal=" << sig << std::endl;
+		break;
+	default:
+		std::cerr << "caught an unexpected signal=" << sig << std::endl;
+		break;
+	}
+}
+
 int main(int argc, char *argv[])
 {
+	std::signal(SIGINT, SigHandler);
+	std::signal(SIGHUP, SigHandler);
+	std::signal(SIGTERM, SigHandler);
+
 	if (argc != 2)
 	{
 		std::cerr << "No configuration file specified! Usage: " << argv[0] << " /pathname/to/configuration/file" << std::endl;

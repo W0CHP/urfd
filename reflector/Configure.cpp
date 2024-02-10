@@ -44,6 +44,7 @@
 #define JDEFAULTTXFREQ           "DefaultTxFreq"
 #define JDESCRIPTION             "Description"
 #define JDEXTRA                  "DExtra"
+#define JDHTSAVEPATH             "DHTSavePath"
 #define JDMRIDDB                 "DMR ID DB"
 #define JDMRPLUS                 "DMRPlus"
 #define JDPLUS                   "DPlus"
@@ -489,6 +490,8 @@ bool CConfigure::ReadData(const std::string &path)
 					data[g_Keys.files.interlink] = value;
 				else if (0 == key.compare(JG3TERMINALPATH))
 					data[g_Keys.files.terminal] = value;
+				else if (0 == key.compare(JDHTSAVEPATH))
+					data[g_Keys.files.dhtsave] = value;
 				else
 					badParam(key);
 				break;
@@ -771,6 +774,7 @@ bool CConfigure::ReadData(const std::string &path)
 		if (isDefined(ErrorLevel::fatal, JFILES, JG3TERMINALPATH, g_Keys.files.terminal, rval))
 			checkFile(JFILES, JG3TERMINALPATH, data[g_Keys.files.terminal]);
 	}
+	isDefined(ErrorLevel::fatal, JFILES, JDHTSAVEPATH, g_Keys.files.dhtsave, rval);
 
 	return rval;
 }

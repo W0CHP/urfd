@@ -116,13 +116,15 @@ There are only a few things that need to be specified. Most important are, the r
 
 You can configure any modules, from **A** to **Z**. They don't have to be contiguous. If your reflector is configured with a transcoder, you can specify which configured modules will be transcoded. Up to three modules can be transcoded if you have the necessary hardware.
 
-Three protocols, BrandMeister, G3 and USRP should be disabled if you aren't going to use them.
+Three protocols, BrandMeister, G3 and USRP can be disabled if you aren't going to use them.
 
 There are three databases needed by *urfd*:
 1. The *DMR ID* database maps a DMR ID to a callsign and *vis versa*.
 2. The *NXDN ID* database maps an NXDN ID to a callsign and *vis versa*.
 3. The *YSF Tx/Rx* database maps a callsign to a transmit/receive RF frequencies.
-These databases can come from a URL or a file, or both. If you specify "both", then the file will be read after the URL.
+These databases can come from a URL or a file, or both. If you specify "both", then the file will be read after the URL. Using "both" is what you want if you need to supply some custom values for your setup, but still want the latest values from the web.
+
+The files section specifies specific locations of important runtime configurations. The DHTSavePath is important for allowing *urfd* to quickly and reliably connect to the **Ham-DHT** network. The first time you boot up *urfd* it will make its initial connection to the network through any single, already operating node that you specify got the **\[Names\] Bootstrap** item. As urfd operates over time, it will establish connections to several other operating nodes that are "close" (as defined by some criteria). This is a fundamental characteristic of a DHT network. When you shutdown *urfd*, it will save the current connection state that your reflector has developed using the file path you specified in DHTSavePath. The next time you boot up *urfd*, if this file exists, it will be read and used to quickly connect your reflector to the network.
 
 #### Special *USRP* configuration
 
@@ -148,7 +150,13 @@ The *dbutil* app can be used for several tasks relating to the three databases t
 - SOURCE is "html" or "file"
 - ACTION is "parse" or "errors"
 - INIFILE is the path to the infile that defines the location of the http and file sources for these three databases.
-One at a time, *dbutil* can work with any of the three DATABASEs. It can read either the http or the file SOURCE. It can either show you the data entries that are syntactically correct or incorrect (ACTION).
+One at a time, *dbutil* can work with any of the three DATABASEs. It can read either the http or the file SOURCE. It can either show you the data entries that are syntactically correct or incorrect (ACTION). Using the "parse" ACTION, you can create a file that can be subsequently read by urfd:
+
+```bash
+./dbutil dmr html parse urfd.ini > /home/user/urfd/reflectlor/dmrid.dat
+```
+
+This can save some time during startup.
 
 ### Installing your system
 
