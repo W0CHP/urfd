@@ -41,13 +41,6 @@ const int dvsi_interleave[49] = {
 };
 
 ////////////////////////////////////////////////////////////////////////////////////////
-// constructor
-CNXDNProtocol::CNXDNProtocol()
-{
-	m_seqNo = 0;
-}
-
-////////////////////////////////////////////////////////////////////////////////////////
 // operation
 
 bool CNXDNProtocol::Initialize(const char *type, const EProtocol ptype, const uint16_t port, const bool has_ipv4, const bool has_ipv6)

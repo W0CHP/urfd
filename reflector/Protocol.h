@@ -62,7 +62,8 @@ class CProtocol
 {
 public:
 	// constructor
-	CProtocol();
+	CProtocol() = delete;
+	CProtocol(const std::string &name);
 
 	// destructor
 	virtual ~CProtocol();
@@ -139,4 +140,7 @@ protected:
 	uint16_t m_Port;
 	// debug
 	CTimer      m_DebugTimer;
+
+	// name of this protocol
+	const std::string m_Name;
 };

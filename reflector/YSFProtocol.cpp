@@ -30,7 +30,7 @@
 
 ////////////////////////////////////////////////////////////////////////////////////////
 // constructor
-CYsfProtocol::CYsfProtocol()
+CYsfProtocol::CYsfProtocol(const std::string &name) : CProtocol(name)
 {
 	m_seqNo = 0;
 }

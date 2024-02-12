@@ -59,6 +59,7 @@ CDvHeaderPacket::CDvHeaderPacket(const CBuffer &buf) : CPacket(buf)
 		std::cerr << "CBuffer is too small to initialize a CDvHeaderPacket" << std::endl;
 	}
 }
+
 unsigned int CDvHeaderPacket::GetNetworkSize()
 {
 	return CPacket::GetNetworkSize() + (4 * CALLSIGN_LEN) + 5;

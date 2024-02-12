@@ -58,7 +58,7 @@ class CG3Protocol : public CSEProtocol
 {
 public:
 	// constructor
-	CG3Protocol() : m_GwAddress(0u), m_Modules("*"), m_LastModTime(0) {}
+	CG3Protocol(const std::string &name) : CSEProtocol(name), m_GwAddress(0u), m_Modules("*"), m_LastModTime(0) {}
 
 	// initialization
 	bool Initialize(const char *type, const EProtocol ptype, const uint16_t port, const bool has_ipv4, const bool has_ipv6);

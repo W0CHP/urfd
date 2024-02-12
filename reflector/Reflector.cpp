@@ -172,6 +172,7 @@ bool CReflector::Start(void)
 
 void CReflector::Stop(void)
 {
+	std::cout << "Shutting down " << m_Callsign.GetCS() << "..." << std::endl;
 	// stop & delete all threads
 	keep_running = false;
 
@@ -180,6 +181,7 @@ void CReflector::Stop(void)
 	{
 		m_XmlReportFuture.get();
 	}
+	std::cout << "XML report stopped" << std::endl;
 
 	// stop & delete all router thread
 	for (auto c : m_Modules)
@@ -190,14 +192,19 @@ void CReflector::Stop(void)
 
 	// close protocols
 	m_Protocols.Close();
+	std::cout << "All Protocols stopped" << std::endl;
 
 	// close gatekeeper
 	g_GateKeeper.Close();
+	std::cout << "GateKeeper stopped" << std::endl;
 
 	// close databases
 	g_LDid.LookupClose();
+	std::cout << "DMR Id DB stopped" << std::endl;
 	g_LNid.LookupClose();
+	std::cout << "NDXN Id DB stopped" << std::endl;
 	g_LYtr.LookupClose();
+	std::cout << "YSF node DB stopped" << std::endl;
 
 #ifndef NO_DHT
 	// kill the DHT
@@ -208,7 +215,9 @@ void CReflector::Stop(void)
 	node.cancelPut(refhash, toUType(EUrfdValueID::Users));
 	node.shutdown({}, true);
 	node.join();
+	std::cout << "DHT network stopped" << std::endl;
 #endif
+	std::cout << "All " << m_Callsign.GetCS() << " processes stopped" << std::endl;
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////
@@ -353,6 +362,7 @@ void CReflector::RouterThread(const char ThisModule)
 		}
 		m_Protocols.Unlock();
 	}
+	std::cout << "Module " << ThisModule << " stopped" << std::endl;
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////

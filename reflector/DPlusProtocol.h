@@ -38,6 +38,9 @@ public:
 class CDplusProtocol : public CSEProtocol
 {
 public:
+	// constructor
+	CDplusProtocol(const std::string &name) : CSEProtocol(name) {}
+
 	// initialization
 	bool Initialize(const char *type, const EProtocol ptype, const uint16_t port, const bool has_ipv4, const bool has_ipv6);
 

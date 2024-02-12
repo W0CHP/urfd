@@ -21,6 +21,8 @@
 // "SE" means "Standard Encoding"
 class CSEProtocol : public CProtocol
 {
+public:
+	CSEProtocol(const std::string &name) : CProtocol(name) {}
 protected:
 	// packet encoding helpers
 	virtual bool EncodeDvPacket(const CPacket &, CBuffer &) const;

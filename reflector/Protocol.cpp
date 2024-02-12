@@ -25,7 +25,7 @@
 // constructor
 
 
-CProtocol::CProtocol() : keep_running(true) {}
+CProtocol::CProtocol(const std::string &name) : keep_running(true), m_Name(name) {}
 
 
 ////////////////////////////////////////////////////////////////////////////////////////
@@ -122,6 +122,7 @@ void CProtocol::Close(void)
 	}
 	m_Socket4.Close();
 	m_Socket6.Close();
+	std::cout << "Protocol " << m_Name << " stopped" << std::endl;
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////
