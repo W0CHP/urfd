@@ -57,7 +57,7 @@ bool CG3Protocol::Initialize(const char */*type*/, const EProtocol /*type*/, con
 	else
 		return false;
 
-	std::cout << "Listening on " << ip << std::endl;
+	std::cout << "Protocol " << m_Name << " on Port " << G3_DV_PORT << " listening on IPv4" << std::endl;
 
 	//create helper socket
 	ip.SetPort(G3_PRESENCE_PORT);
@@ -89,12 +89,12 @@ bool CG3Protocol::Initialize(const char */*type*/, const EProtocol /*type*/, con
 	// update time
 	m_LastKeepaliveTime.start();
 
-	std::cout << "Initialized G3 Protocol, all threads started" << std::endl;
 	return true;
 }
 
 void CG3Protocol::Close(void)
 {
+	keep_running = false;
 	if (m_PresenceFuture.valid())
 	{
 		m_PresenceFuture.get();
@@ -109,6 +109,7 @@ void CG3Protocol::Close(void)
 	{
 		m_IcmpFuture.get();
 	}
+	std::cout << "Protocol " << m_Name << " stopped" << std::endl;
 }
 
 

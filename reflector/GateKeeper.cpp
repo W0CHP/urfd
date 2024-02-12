@@ -171,10 +171,6 @@ void CGateKeeper::Thread()
 {
 	while (keep_running)
 	{
-		// Wait 30 seconds
-		for (int i=0; i<15 && keep_running; i++)
-			std::this_thread::sleep_for(std::chrono::milliseconds(2000));
-
 		// have lists files changed ?
 		if ( m_WhiteSet.NeedReload() )
 		{
@@ -188,6 +184,9 @@ void CGateKeeper::Thread()
 		{
 			m_InterlinkMap.ReloadFromFile();
 		}
+		// Wait 30 seconds
+		for (int i=0; i<10 && keep_running; i++)
+			std::this_thread::sleep_for(std::chrono::seconds(3));
 	}
 }
 

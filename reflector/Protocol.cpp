@@ -33,9 +33,6 @@ CProtocol::CProtocol(const std::string &name) : keep_running(true), m_Name(name)
 
 CProtocol::~CProtocol()
 {
-	// kill threads
-	Close();
-
 	// empty queue
 	while ( !m_Queue.IsEmpty() )
 	{
@@ -69,7 +66,6 @@ bool CProtocol::Initialize(const char *type, const EProtocol ptype, const uint16
 			if (! m_Socket4.Open(ip4))
 				return false;
 		}
-		std::cout << "Listening on " << ip4 << std::endl;
 	}
 
 	if (g_Configure.IsString(g_Keys.ip.ipv6bind))
@@ -85,7 +81,6 @@ bool CProtocol::Initialize(const char *type, const EProtocol ptype, const uint16
 					m_Socket4.Close();
 					return false;
 				}
-				std::cout << "Listening on " << ip6 << std::endl;
 			}
 		}
 	}
@@ -101,6 +96,18 @@ bool CProtocol::Initialize(const char *type, const EProtocol ptype, const uint16
 		m_Socket6.Close();
 		return false;
 	}
+
+	std::string stacks;
+	if (has_ipv4)
+	{
+		stacks.assign("IPv4");
+		if (has_ipv6)
+			stacks.append(" and IPv6");
+	}
+	else
+		stacks.assign("IPv4");
+
+	std::cout << m_Name << " using Port " << port << " listening on " << stacks << std::endl;
 
 	return true;
 }
