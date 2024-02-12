@@ -38,10 +38,10 @@ CReflector::~CReflector()
 
 	for (auto it=m_Modules.cbegin(); it!=m_Modules.cend(); it++)
 	{
-		if (m_RouterFuture[*it].valid())
-			m_RouterFuture[*it].get();
+		if (m_ModuleFuture[*it].valid())
+			m_ModuleFuture[*it].get();
 	}
-	m_RouterFuture.clear();
+	m_ModuleFuture.clear();
 	m_Stream.clear();
 }
 
@@ -143,7 +143,7 @@ bool CReflector::Start(void)
 		}
 		try
 		{
-			m_RouterFuture[c] = std::async(std::launch::async, &CReflector::RouterThread, this, c);
+			m_ModuleFuture[c] = std::async(std::launch::async, &CReflector::ModuleThread, this, c);
 		}
 		catch(const std::exception& e)
 		{
@@ -186,8 +186,10 @@ void CReflector::Stop(void)
 	// stop & delete all router thread
 	for (auto c : m_Modules)
 	{
-		if (m_RouterFuture[c].valid())
-			m_RouterFuture[c].get();
+		// push a nullptr to the stream to unlock PopWait() in the module thread
+		m_Stream[c]->Push(nullptr);
+		if (m_ModuleFuture[c].valid())
+			m_ModuleFuture[c].get();
 	}
 
 	// close protocols
@@ -326,19 +328,22 @@ void CReflector::CloseStream(std::shared_ptr<CPacketStream> stream)
 ////////////////////////////////////////////////////////////////////////////////////////
 // router threads
 
-void CReflector::RouterThread(const char ThisModule)
+void CReflector::ModuleThread(const char ThisModule)
 {
 	auto pitem = m_Stream.find(ThisModule);
 	if (m_Stream.end() == pitem)
 	{
-		std::cerr << "Module '" << ThisModule << " CPacketStream doesn't exist! aborting RouterThread()" << std::endl;
+		std::cerr << "Module '" << ThisModule << " CPacketStream doesn't exist! aborting ModuleThread()" << std::endl;
 		return;
 	}
 	const auto streamIn = pitem->second;
-	while (keep_running)
+	do
 	{
 		// wait until something shows up
 		auto packet = streamIn->PopWait();
+
+		if (! packet)	// a nullptr probably means we're shutting down
+			continue;
 
 		packet->SetPacketModule(ThisModule);
 
@@ -361,7 +366,7 @@ void CReflector::RouterThread(const char ThisModule)
 			(*it)->Push(std::move(copy));
 		}
 		m_Protocols.Unlock();
-	}
+	} while (keep_running);
 	std::cout << "Module " << ThisModule << " stopped" << std::endl;
 }
 

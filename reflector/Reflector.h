@@ -94,7 +94,7 @@ protected:
 #endif
 
 	// threads
-	void RouterThread(const char);
+	void ModuleThread(const char);
 	void StateReportThread(void);
 
 	// streams
@@ -121,7 +121,7 @@ protected:
 
 	// threads
 	std::atomic<bool> keep_running;
-	std::unordered_map<char, std::future<void>> m_RouterFuture;
+	std::unordered_map<char, std::future<void>> m_ModuleFuture;
 	std::future<void> m_XmlReportFuture;
 
 #ifndef NO_DHT
