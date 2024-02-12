@@ -186,8 +186,8 @@ void CReflector::Stop(void)
 	// stop & delete all router thread
 	for (auto c : m_Modules)
 	{
-		// push a nullptr to the stream to unlock PopWait() in the module thread
-		m_Stream[c]->Push(nullptr);
+		// push an empty Frame Packet to the stream to unlock PopWait() in the module thread
+		m_Stream[c]->Push(std::make_unique<CDvFramePacket>());
 		if (m_ModuleFuture[c].valid())
 			m_ModuleFuture[c].get();
 	}
@@ -337,13 +337,13 @@ void CReflector::ModuleThread(const char ThisModule)
 		return;
 	}
 	const auto streamIn = pitem->second;
-	do
+	while (true)
 	{
 		// wait until something shows up
 		auto packet = streamIn->PopWait();
 
-		if (! packet)	// a nullptr probably means we're shutting down
-			continue;
+		if (! keep_running)
+			break;
 
 		packet->SetPacketModule(ThisModule);
 
@@ -366,7 +366,7 @@ void CReflector::ModuleThread(const char ThisModule)
 			(*it)->Push(std::move(copy));
 		}
 		m_Protocols.Unlock();
-	} while (keep_running);
+	}
 	std::cout << "Module " << ThisModule << " stopped" << std::endl;
 }
 
