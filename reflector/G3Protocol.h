@@ -88,7 +88,7 @@ protected:
 	void NeedReload(void);
 
 	// queue helper
-	void HandleQueue(void);
+	void HandlePacket(std::unique_ptr<CPacket> packet);
 
 	// keepalive helpers
 	void HandleKeepalives(void);

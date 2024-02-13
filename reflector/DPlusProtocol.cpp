@@ -226,70 +226,64 @@ void CDplusProtocol::OnDvHeaderPacketIn(std::unique_ptr<CDvHeaderPacket> &Header
 ////////////////////////////////////////////////////////////////////////////////////////
 // queue helper
 
-void CDplusProtocol::HandleQueue(void)
+void CDplusProtocol::HandlePacket(std::unique_ptr<CPacket> packet)
 {
-	while (! m_Queue.IsEmpty())
+	// get our sender's id
+	const auto mod = packet->GetPacketModule();
+
+	// check if it's header and update cache
+	if ( packet->IsDvHeader() )
 	{
-		// get the packet
-		auto packet = m_Queue.Pop();
+		// this relies on queue feeder setting valid module id
+		m_StreamsCache[mod].m_dvHeader = CDvHeaderPacket((const CDvHeaderPacket &)*packet.get());
+		m_StreamsCache[mod].m_iSeqCounter = 0;
+	}
 
-		// get our sender's id
-		const auto mod = packet->GetPacketModule();
-
-		// check if it's header and update cache
-		if ( packet->IsDvHeader() )
+	// encode it
+	CBuffer buffer;
+	if ( EncodeDvPacket(*packet, buffer) )
+	{
+		// and push it to all our clients who are not streaming in
+		// note that for dplus protocol, all stream of all modules are push to all clients
+		// it's client who decide which stream he's interrrested in
+		CClients *clients = g_Reflector.GetClients();
+		auto it = clients->begin();
+		std::shared_ptr<CClient>client = nullptr;
+		while ( (client = clients->FindNextClient(EProtocol::dplus, it)) != nullptr )
 		{
-			// this relies on queue feeder setting valid module id
-			m_StreamsCache[mod].m_dvHeader = CDvHeaderPacket((const CDvHeaderPacket &)*packet.get());
-			m_StreamsCache[mod].m_iSeqCounter = 0;
-		}
-
-		// encode it
-		CBuffer buffer;
-		if ( EncodeDvPacket(*packet, buffer) )
-		{
-			// and push it to all our clients who are not streaming in
-			// note that for dplus protocol, all stream of all modules are push to all clients
-			// it's client who decide which stream he's interrrested in
-			CClients *clients = g_Reflector.GetClients();
-			auto it = clients->begin();
-			std::shared_ptr<CClient>client = nullptr;
-			while ( (client = clients->FindNextClient(EProtocol::dplus, it)) != nullptr )
+			// is this client busy ?
+			if ( !client->IsAMaster() )
 			{
-				// is this client busy ?
-				if ( !client->IsAMaster() )
+				// check if client is a dextra dongle
+				// then replace RPT2 with XRF instead of REF
+				// if the client type is not yet known, send bothheaders
+				if ( packet->IsDvHeader() )
 				{
-					// check if client is a dextra dongle
-					// then replace RPT2 with XRF instead of REF
-					// if the client type is not yet known, send bothheaders
-					if ( packet->IsDvHeader() )
-					{
-						// sending header in Dplus is client specific
-						SendDvHeader((CDvHeaderPacket *)packet.get(), (CDplusClient *)client.get());
-					}
-					else if ( packet->IsDvFrame() )
-					{
-						// and send the DV frame
-						Send(buffer, client->GetIp());
+					// sending header in Dplus is client specific
+					SendDvHeader((CDvHeaderPacket *)packet.get(), (CDplusClient *)client.get());
+				}
+				else if ( packet->IsDvFrame() )
+				{
+					// and send the DV frame
+					Send(buffer, client->GetIp());
 
-						// is it time to insert a DVheader copy ?
-						if ( (m_StreamsCache[mod].m_iSeqCounter++ % 21) == 20 )
-						{
-							// yes, clone it
-							CDvHeaderPacket packet2(m_StreamsCache[mod].m_dvHeader);
-							// and send it
-							SendDvHeader(&packet2, (CDplusClient *)client.get());
-						}
-					}
-					else
+					// is it time to insert a DVheader copy ?
+					if ( (m_StreamsCache[mod].m_iSeqCounter++ % 21) == 20 )
 					{
-						// otherwise, send the original packet
-						Send(buffer, client->GetIp());
+						// yes, clone it
+						CDvHeaderPacket packet2(m_StreamsCache[mod].m_dvHeader);
+						// and send it
+						SendDvHeader(&packet2, (CDplusClient *)client.get());
 					}
 				}
+				else
+				{
+					// otherwise, send the original packet
+					Send(buffer, client->GetIp());
+				}
 			}
-			g_Reflector.ReleaseClients();
 		}
+		g_Reflector.ReleaseClients();
 	}
 }
 

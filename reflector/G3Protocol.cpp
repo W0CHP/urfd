@@ -451,39 +451,33 @@ void CG3Protocol::Task(void)
 ////////////////////////////////////////////////////////////////////////////////////////
 // queue helper
 
-void CG3Protocol::HandleQueue(void)
+void CG3Protocol::HandlePacket(std::unique_ptr<CPacket> packet)
 {
-	while (! m_Queue.IsEmpty())
+	// suppress host checks
+	m_LastKeepaliveTime.start();
+
+	// encode it
+	CBuffer buffer;
+	if ( EncodeDvPacket(*packet, buffer) )
 	{
-		// suppress host checks
-		m_LastKeepaliveTime.start();
-
-		// get the packet
-		auto packet = m_Queue.Pop();
-
-		// encode it
-		CBuffer buffer;
-		if ( EncodeDvPacket(*packet, buffer) )
+		// and push it to all our clients linked to the module and who are not streaming in
+		CClients *clients = g_Reflector.GetClients();
+		auto it = clients->begin();
+		std::shared_ptr<CClient>client = nullptr;
+		while ( (client = clients->FindNextClient(EProtocol::g3, it)) != nullptr )
 		{
-			// and push it to all our clients linked to the module and who are not streaming in
-			CClients *clients = g_Reflector.GetClients();
-			auto it = clients->begin();
-			std::shared_ptr<CClient>client = nullptr;
-			while ( (client = clients->FindNextClient(EProtocol::g3, it)) != nullptr )
+			// is this client busy ?
+			if ( !client->IsAMaster() && (client->GetReflectorModule() == packet->GetPacketModule()) )
 			{
-				// is this client busy ?
-				if ( !client->IsAMaster() && (client->GetReflectorModule() == packet->GetPacketModule()) )
+				// not busy, send the packet
+				int n = packet->IsDvHeader() ? 5 : 1;
+				for ( int i = 0; i < n; i++ )
 				{
-					// not busy, send the packet
-					int n = packet->IsDvHeader() ? 5 : 1;
-					for ( int i = 0; i < n; i++ )
-					{
-						Send(buffer, client->GetIp());
-					}
+					Send(buffer, client->GetIp());
 				}
 			}
-			g_Reflector.ReleaseClients();
 		}
+		g_Reflector.ReleaseClients();
 	}
 }
 

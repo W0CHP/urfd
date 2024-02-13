@@ -198,41 +198,35 @@ void CURFProtocol::Task(void)
 ////////////////////////////////////////////////////////////////////////////////////////
 // queue helper
 
-void CURFProtocol::HandleQueue(void)
+void CURFProtocol::HandlePacket(std::unique_ptr<CPacket> packet)
 {
-	while (! m_Queue.IsEmpty())
+	// check if origin of packet is local
+	// if not, do not stream it out as it will cause
+	// network loop between linked URF peers
+	if ( packet->IsLocalOrigin() )
 	{
-		// get the packet
-		auto packet = m_Queue.Pop();
-
-		// check if origin of packet is local
-		// if not, do not stream it out as it will cause
-		// network loop between linked URF peers
-		if ( packet->IsLocalOrigin() )
+		// encode it
+		CBuffer buffer;
+		if ( EncodeDvPacket(*packet, buffer) )
 		{
-			// encode it
-			CBuffer buffer;
-			if ( EncodeDvPacket(*packet, buffer) )
+			// and push it to all our clients linked to the module and who are not streaming in
+			CClients *clients = g_Reflector.GetClients();
+			auto it = clients->begin();
+			std::shared_ptr<CClient>client = nullptr;
+			while ( (client = clients->FindNextClient(EProtocol::urf, it)) != nullptr )
 			{
-				// and push it to all our clients linked to the module and who are not streaming in
-				CClients *clients = g_Reflector.GetClients();
-				auto it = clients->begin();
-				std::shared_ptr<CClient>client = nullptr;
-				while ( (client = clients->FindNextClient(EProtocol::urf, it)) != nullptr )
+				// is this client busy ?
+				if ( !client->IsAMaster() && (client->GetReflectorModule() == packet->GetPacketModule()) )
 				{
-					// is this client busy ?
-					if ( !client->IsAMaster() && (client->GetReflectorModule() == packet->GetPacketModule()) )
+					// no, send the packet
+					// this is protocol revision dependent
+					if (EProtoRev::original == client->GetProtocolRevision())
 					{
-						// no, send the packet
-						// this is protocol revision dependent
-						if (EProtoRev::original == client->GetProtocolRevision())
-						{
-							Send(buffer, client->GetIp());
-						}
+						Send(buffer, client->GetIp());
 					}
 				}
-				g_Reflector.ReleaseClients();
 			}
+			g_Reflector.ReleaseClients();
 		}
 	}
 }

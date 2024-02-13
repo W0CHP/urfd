@@ -233,49 +233,43 @@ void CUSRPProtocol::OnDvHeaderPacketIn(std::unique_ptr<CDvHeaderPacket> &Header,
 ////////////////////////////////////////////////////////////////////////////////////////
 // queue helper
 
-void CUSRPProtocol::HandleQueue(void)
+void CUSRPProtocol::HandlePacket(std::unique_ptr<CPacket> packet)
 {
-	while (! m_Queue.IsEmpty())
+	// get our sender's id
+	const auto module = packet->GetPacketModule();
+	CBuffer buffer;
+
+	// check if it's header and update cache
+	if ( packet->IsDvHeader() )
 	{
-		// get the packet
-		auto packet = m_Queue.Pop();
+		// this relies on queue feeder setting valid module id
+		// m_StreamsCache[module] will be created if it doesn't exist
+		m_StreamsCache[module].m_dvHeader = CDvHeaderPacket((const CDvHeaderPacket &)*packet.get());
+		m_StreamsCache[module].m_iSeqCounter = 0;
+		EncodeUSRPHeaderPacket(m_StreamsCache[module].m_dvHeader, m_StreamsCache[module].m_iSeqCounter++, buffer);
+	}
+	else if ( packet->IsDvFrame() )
+	{
+		EncodeUSRPPacket(m_StreamsCache[module].m_dvHeader, (const CDvFramePacket &)*packet.get(), m_StreamsCache[module].m_iSeqCounter++, buffer, packet->IsLastPacket());
+	}
 
-		// get our sender's id
-		const auto module = packet->GetPacketModule();
-		CBuffer buffer;
-
-		// check if it's header and update cache
-		if ( packet->IsDvHeader() )
+	// send it
+	if ( buffer.size() > 0 )
+	{
+		// and push it to all our clients linked to the module and who are not streaming in
+		CClients *clients = g_Reflector.GetClients();
+		auto it = clients->begin();
+		std::shared_ptr<CClient>client = nullptr;
+		while ( (client = clients->FindNextClient(EProtocol::usrp, it)) != nullptr )
 		{
-			// this relies on queue feeder setting valid module id
-			// m_StreamsCache[module] will be created if it doesn't exist
-			m_StreamsCache[module].m_dvHeader = CDvHeaderPacket((const CDvHeaderPacket &)*packet.get());
-			m_StreamsCache[module].m_iSeqCounter = 0;
-			EncodeUSRPHeaderPacket(m_StreamsCache[module].m_dvHeader, m_StreamsCache[module].m_iSeqCounter++, buffer);
-		}
-		else if ( packet->IsDvFrame() )
-		{
-			EncodeUSRPPacket(m_StreamsCache[module].m_dvHeader, (const CDvFramePacket &)*packet.get(), m_StreamsCache[module].m_iSeqCounter++, buffer, packet->IsLastPacket());
-		}
-
-		// send it
-		if ( buffer.size() > 0 )
-		{
-			// and push it to all our clients linked to the module and who are not streaming in
-			CClients *clients = g_Reflector.GetClients();
-			auto it = clients->begin();
-			std::shared_ptr<CClient>client = nullptr;
-			while ( (client = clients->FindNextClient(EProtocol::usrp, it)) != nullptr )
+			// is this client busy ?
+			if ( !client->IsAMaster() && (client->GetReflectorModule() == module) )
 			{
-				// is this client busy ?
-				if ( !client->IsAMaster() && (client->GetReflectorModule() == module) )
-				{
-					// no, send the packet
-					Send(buffer, client->GetIp());
-				}
+				// no, send the packet
+				Send(buffer, client->GetIp());
 			}
-			g_Reflector.ReleaseClients();
 		}
+		g_Reflector.ReleaseClients();
 	}
 }
 

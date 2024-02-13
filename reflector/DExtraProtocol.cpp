@@ -191,36 +191,30 @@ void CDextraProtocol::Task(void)
 ////////////////////////////////////////////////////////////////////////////////////////
 // queue helper
 
-void CDextraProtocol::HandleQueue(void)
+void CDextraProtocol::HandlePacket(std::unique_ptr<CPacket> packet)
 {
-	while (! m_Queue.IsEmpty() )
+	// encode it
+	CBuffer buffer;
+	if ( EncodeDvPacket(*packet, buffer) )
 	{
-		// get the packet
-		auto packet = m_Queue.Pop();
-
-		// encode it
-		CBuffer buffer;
-		if ( EncodeDvPacket(*packet, buffer) )
+		// and push it to all our clients linked to the module and who are not streaming in
+		CClients *clients = g_Reflector.GetClients();
+		auto it = clients->begin();
+		std::shared_ptr<CClient>client = nullptr;
+		while ( (client = clients->FindNextClient(EProtocol::dextra, it)) != nullptr )
 		{
-			// and push it to all our clients linked to the module and who are not streaming in
-			CClients *clients = g_Reflector.GetClients();
-			auto it = clients->begin();
-			std::shared_ptr<CClient>client = nullptr;
-			while ( (client = clients->FindNextClient(EProtocol::dextra, it)) != nullptr )
+			// is this client busy ?
+			if ( !client->IsAMaster() && (client->GetReflectorModule() == packet->GetPacketModule()) )
 			{
-				// is this client busy ?
-				if ( !client->IsAMaster() && (client->GetReflectorModule() == packet->GetPacketModule()) )
+				// no, send the packet
+				int n = packet->IsDvHeader() ? 5 : 1;
+				for ( int i = 0; i < n; i++ )
 				{
-					// no, send the packet
-					int n = packet->IsDvHeader() ? 5 : 1;
-					for ( int i = 0; i < n; i++ )
-					{
-						Send(buffer, client->GetIp());
-					}
+					Send(buffer, client->GetIp());
 				}
 			}
-			g_Reflector.ReleaseClients();
 		}
+		g_Reflector.ReleaseClients();
 	}
 }
 

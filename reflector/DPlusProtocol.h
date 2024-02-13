@@ -49,7 +49,7 @@ public:
 
 protected:
 	// queue helper
-	void HandleQueue(void);
+	void HandlePacket(std::unique_ptr<CPacket> packet);
 	void SendDvHeader(CDvHeaderPacket *, CDplusClient *);
 
 	// keepalive helpers

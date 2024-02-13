@@ -59,7 +59,7 @@ public:
 
 protected:
 	// queue helper
-	void HandleQueue(void);
+	void HandlePacket(std::unique_ptr<CPacket> packet);
 	void SendBufferToClients(const CBuffer &, uint8_t);
 
 	// keepalive helpers

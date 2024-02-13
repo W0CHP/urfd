@@ -237,70 +237,64 @@ void CNXDNProtocol::OnDvHeaderPacketIn(std::unique_ptr<CDvHeaderPacket> &Header,
 ////////////////////////////////////////////////////////////////////////////////////////
 // queue helper
 
-void CNXDNProtocol::HandleQueue(void)
+void CNXDNProtocol::HandlePacket(std::unique_ptr<CPacket> packet)
 {
-	while (! m_Queue.IsEmpty())
+	// get our sender's id
+	const auto mod = packet->GetPacketModule();
+
+	// encode
+	CBuffer buffer;
+
+	// check if it's header
+	if ( packet->IsDvHeader() )
 	{
-		// get the packet
-		auto packet = m_Queue.Pop();
+		// update local stream cache
+		// this relies on queue feeder setting valid module id
+		m_StreamsCache[mod].m_dvHeader = CDvHeaderPacket((CDvHeaderPacket &)*packet.get());
+		m_StreamsCache[mod].m_iSeqCounter = 0;
 
-		// get our sender's id
-		const auto mod = packet->GetPacketModule();
-
-		// encode
-		CBuffer buffer;
-
-		// check if it's header
-		if ( packet->IsDvHeader() )
+		// encode it
+		EncodeNXDNHeaderPacket((CDvHeaderPacket &)*packet.get(), buffer);
+	}
+	// check if it's a last frame
+	else if ( packet->IsLastPacket() )
+	{
+		// encode it
+		EncodeNXDNHeaderPacket((CDvHeaderPacket &)*packet.get(), buffer, true);
+	}
+	// otherwise, just a regular DV frame
+	else
+	{
+		// update local stream cache or send triplet when needed
+		uint8_t pid = packet->GetNXDNPacketId();
+		if (pid <= 3)
 		{
-			// update local stream cache
-			// this relies on queue feeder setting valid module id
-			m_StreamsCache[mod].m_dvHeader = CDvHeaderPacket((CDvHeaderPacket &)*packet.get());
-			m_StreamsCache[mod].m_iSeqCounter = 0;
-
-			// encode it
-			EncodeNXDNHeaderPacket((CDvHeaderPacket &)*packet.get(), buffer);
-		}
-		// check if it's a last frame
-		else if ( packet->IsLastPacket() )
-		{
-			// encode it
-			EncodeNXDNHeaderPacket((CDvHeaderPacket &)*packet.get(), buffer, true);
-		}
-		// otherwise, just a regular DV frame
-		else
-		{
-			// update local stream cache or send triplet when needed
-			uint8_t pid = packet->GetNXDNPacketId();
-			if (pid <= 3)
+			m_StreamsCache[mod].m_dvFrames[pid] = CDvFramePacket((CDvFramePacket &)*packet.get());
+			if ( pid == 3 )
 			{
-				m_StreamsCache[mod].m_dvFrames[pid] = CDvFramePacket((CDvFramePacket &)*packet.get());
-				if ( pid == 3 )
-				{
-					EncodeNXDNPacket(m_StreamsCache[mod].m_dvHeader, m_StreamsCache[mod].m_iSeqCounter++, m_StreamsCache[mod].m_dvFrames, buffer);
-				}
+				EncodeNXDNPacket(m_StreamsCache[mod].m_dvHeader, m_StreamsCache[mod].m_iSeqCounter++, m_StreamsCache[mod].m_dvFrames, buffer);
 			}
 		}
+	}
 
-		// send it
-		if ( buffer.size() > 0 )
+	// send it
+	if ( buffer.size() > 0 )
+	{
+		// and push it to all our clients linked to the module and who are not streaming in
+		CClients *clients = g_Reflector.GetClients();
+		auto it = clients->begin();
+		std::shared_ptr<CClient>client = nullptr;
+		while ( (client = clients->FindNextClient(EProtocol::nxdn, it)) != nullptr )
 		{
-			// and push it to all our clients linked to the module and who are not streaming in
-			CClients *clients = g_Reflector.GetClients();
-			auto it = clients->begin();
-			std::shared_ptr<CClient>client = nullptr;
-			while ( (client = clients->FindNextClient(EProtocol::nxdn, it)) != nullptr )
+			// is this client busy ?
+			if ( !client->IsAMaster() && (client->GetReflectorModule() == packet->GetPacketModule()) )
 			{
-				// is this client busy ?
-				if ( !client->IsAMaster() && (client->GetReflectorModule() == packet->GetPacketModule()) )
-				{
-					// no, send the packet
-					Send(buffer, client->GetIp());
+				// no, send the packet
+				Send(buffer, client->GetIp());
 
-				}
 			}
-			g_Reflector.ReleaseClients();
 		}
+		g_Reflector.ReleaseClients();
 	}
 }
 

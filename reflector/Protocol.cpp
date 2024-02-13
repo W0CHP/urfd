@@ -155,6 +155,37 @@ void CProtocol::OnDvFramePacketIn(std::unique_ptr<CDvFramePacket> &Frame, const 
 #endif
 }
 
+void CProtocol::HandleQueue(void)
+{
+	while(! m_Queue.IsEmpty())
+	{
+		uint16_t stream_id;
+
+		// get the next packet
+		auto packet = m_Queue.Pop();
+
+		// is it the last packet
+		const auto is_last_packet = packet->IsLastPacket() && packet->IsDvFrame();
+		if (is_last_packet)
+		{
+			stream_id = packet->GetStreamId();
+		}
+
+		HandlePacket(std::move(packet)); // protocol specific handling, i.e., it will be endcoded and sent to clientsm
+
+		// tie up loose ends if this is the last packet
+		if (is_last_packet)
+		{
+			auto it = m_Streams.find(stream_id);
+			if (m_Streams.end() != it)
+			{
+				g_Reflector.CloseStream(it->second);
+				m_Streams.erase(stream_id);
+			}
+		}
+	}
+}
+
 ////////////////////////////////////////////////////////////////////////////////////////
 // stream handle helpers
 
@@ -182,6 +213,7 @@ void CProtocol::CheckStreamsTimeout(void)
 		// time out ?
 		if ( it->second->IsExpired() )
 		{
+			std::cout << "Stream Timout from " << it->second->GetOwnerClient()->GetCallsign() << " user: " << it->second->GetUserCallsign() << std::endl;
 			// yes, close it
 			g_Reflector.CloseStream(it->second);
 			// and remove it from the m_Streams map

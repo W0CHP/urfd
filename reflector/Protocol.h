@@ -92,7 +92,8 @@ protected:
 	void CheckStreamsTimeout(void);
 
 	// queue helper
-	virtual void HandleQueue(void) = 0;
+	void HandleQueue(void);
+	virtual void HandlePacket(std::unique_ptr<CPacket> packet) = 0;
 
 	// keepalive helpers
 	virtual void HandleKeepalives(void) = 0;

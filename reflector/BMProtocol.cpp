@@ -188,53 +188,47 @@ void CBMProtocol::Task(void)
 ////////////////////////////////////////////////////////////////////////////////////////
 // queue helper
 
-void CBMProtocol::HandleQueue(void)
+void CBMProtocol::HandlePacket(std::unique_ptr<CPacket> packet)
 {
-	while (! m_Queue.IsEmpty())
+	// encode it
+	CBuffer buffer;
+	if ( EncodeDvPacket(*packet, buffer) )
 	{
-		// get the packet
-		auto packet = m_Queue.Pop();
-
-		// encode it
-		CBuffer buffer;
-		if ( EncodeDvPacket(*packet, buffer) )
+		// encode revision dependent version
+		CBuffer bufferLegacy = buffer;
+		if ( packet->IsDvFrame() && (bufferLegacy.size() == 45) )
 		{
-			// encode revision dependent version
-			CBuffer bufferLegacy = buffer;
-			if ( packet->IsDvFrame() && (bufferLegacy.size() == 45) )
-			{
-				bufferLegacy.resize(27);
-			}
+			bufferLegacy.resize(27);
+		}
 
-			// and push it to all our clients linked to the module and who are not streaming in
-			CClients *clients = g_Reflector.GetClients();
-			auto it = clients->begin();
-			std::shared_ptr<CClient>client = nullptr;
-			while ( (client = clients->FindNextClient(EProtocol::bm, it)) != nullptr )
+		// and push it to all our clients linked to the module and who are not streaming in
+		CClients *clients = g_Reflector.GetClients();
+		auto it = clients->begin();
+		std::shared_ptr<CClient>client = nullptr;
+		while ( (client = clients->FindNextClient(EProtocol::bm, it)) != nullptr )
+		{
+			// is this client busy ?
+			if ( !client->IsAMaster() && (client->GetReflectorModule() == packet->GetPacketModule()) )
 			{
-				// is this client busy ?
-				if ( !client->IsAMaster() && (client->GetReflectorModule() == packet->GetPacketModule()) )
+				// no, send the packet
+				// this is protocol revision dependent
+				switch ( client->GetProtocolRevision() )
 				{
-					// no, send the packet
-					// this is protocol revision dependent
-					switch ( client->GetProtocolRevision() )
-					{
-					case EProtoRev::original:
-					case EProtoRev::revised:
+				case EProtoRev::original:
+				case EProtoRev::revised:
+					Send(bufferLegacy, client->GetIp());
+					break;
+				case EProtoRev::ambe:
+				default:
+					if (m_HasTranscoder)
+						Send(buffer, client->GetIp());
+					else
 						Send(bufferLegacy, client->GetIp());
-						break;
-					case EProtoRev::ambe:
-					default:
-						if (m_HasTranscoder)
-							Send(buffer, client->GetIp());
-						else
-							Send(bufferLegacy, client->GetIp());
-						break;
-					}
+					break;
 				}
 			}
-			g_Reflector.ReleaseClients();
 		}
+		g_Reflector.ReleaseClients();
 	}
 }
 

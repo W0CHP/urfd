@@ -216,72 +216,66 @@ void CDmrplusProtocol::OnDvHeaderPacketIn(std::unique_ptr<CDvHeaderPacket> &Head
 ////////////////////////////////////////////////////////////////////////////////////////
 // queue helper
 
-void CDmrplusProtocol::HandleQueue(void)
+void CDmrplusProtocol::HandlePacket(std::unique_ptr<CPacket> packet)
 {
-	while (! m_Queue.IsEmpty())
+	// get our sender's id
+	const auto mod = packet->GetPacketModule();
+
+	// encode
+	CBuffer buffer;
+
+	// check if it's header
+	if ( packet->IsDvHeader() )
 	{
-		// get the packet
-		auto packet = m_Queue.Pop();
+		// update local stream cache
+		// this relies on queue feeder setting valid module id
+		m_StreamsCache[mod].m_dvHeader = CDvHeaderPacket((const CDvHeaderPacket &)*packet.get());
+		m_StreamsCache[mod].m_uiSeqId = 4;
 
-		// get our sender's id
-		const auto mod = packet->GetPacketModule();
-
-		// encode
-		CBuffer buffer;
-
-		// check if it's header
-		if ( packet->IsDvHeader() )
+		// encode it
+		EncodeDMRPlusHeaderPacket((const CDvHeaderPacket &)*packet.get(), &buffer);
+	}
+	else
+	{
+		// update local stream cache or send triplet when needed
+		switch ( packet->GetDmrPacketSubid() )
 		{
-			// update local stream cache
-			// this relies on queue feeder setting valid module id
-			m_StreamsCache[mod].m_dvHeader = CDvHeaderPacket((const CDvHeaderPacket &)*packet.get());
-			m_StreamsCache[mod].m_uiSeqId = 4;
-
-			// encode it
-			EncodeDMRPlusHeaderPacket((const CDvHeaderPacket &)*packet.get(), &buffer);
+		case 1:
+			m_StreamsCache[mod].m_dvFrame0 = CDvFramePacket((const CDvFramePacket &)*packet.get());
+			break;
+		case 2:
+			m_StreamsCache[mod].m_dvFrame1 = CDvFramePacket((const CDvFramePacket &)*packet.get());
+			break;
+		case 3:
+			EncodeDMRPlusPacket(m_StreamsCache[mod].m_dvHeader, m_StreamsCache[mod].m_dvFrame0, m_StreamsCache[mod].m_dvFrame1, (const CDvFramePacket &)*packet.get(), m_StreamsCache[mod].m_uiSeqId, &buffer);
+			m_StreamsCache[mod].m_uiSeqId = GetNextSeqId(m_StreamsCache[mod].m_uiSeqId);
+			break;
+		default:
+			break;
 		}
-		else
+
+	}
+
+	// send it
+	if ( buffer.size() > 0 )
+	{
+		// and push it to all our clients linked to the module and who are not streaming in
+		CClients *clients = g_Reflector.GetClients();
+		auto it = clients->begin();
+		std::shared_ptr<CClient>client = nullptr;
+		while ( (client = clients->FindNextClient(EProtocol::dmrplus, it)) != nullptr )
 		{
-			// update local stream cache or send triplet when needed
-			switch ( packet->GetDmrPacketSubid() )
+			// is this client busy ?
+			if ( !client->IsAMaster() && (client->GetReflectorModule() == packet->GetPacketModule()) )
 			{
-			case 1:
-				m_StreamsCache[mod].m_dvFrame0 = CDvFramePacket((const CDvFramePacket &)*packet.get());
-				break;
-			case 2:
-				m_StreamsCache[mod].m_dvFrame1 = CDvFramePacket((const CDvFramePacket &)*packet.get());
-				break;
-			case 3:
-				EncodeDMRPlusPacket(m_StreamsCache[mod].m_dvHeader, m_StreamsCache[mod].m_dvFrame0, m_StreamsCache[mod].m_dvFrame1, (const CDvFramePacket &)*packet.get(), m_StreamsCache[mod].m_uiSeqId, &buffer);
-				m_StreamsCache[mod].m_uiSeqId = GetNextSeqId(m_StreamsCache[mod].m_uiSeqId);
-				break;
-			default:
-				break;
+				// no, send the packet
+				Send(buffer, client->GetIp());
 			}
-
 		}
+		g_Reflector.ReleaseClients();
 
-		// send it
-		if ( buffer.size() > 0 )
-		{
-			// and push it to all our clients linked to the module and who are not streaming in
-			CClients *clients = g_Reflector.GetClients();
-			auto it = clients->begin();
-			std::shared_ptr<CClient>client = nullptr;
-			while ( (client = clients->FindNextClient(EProtocol::dmrplus, it)) != nullptr )
-			{
-				// is this client busy ?
-				if ( !client->IsAMaster() && (client->GetReflectorModule() == packet->GetPacketModule()) )
-				{
-					// no, send the packet
-					Send(buffer, client->GetIp());
-				}
-			}
-			g_Reflector.ReleaseClients();
-
-			// debug
-			//buffer.DebugDump(g_Reflector.m_DebugFile);
-		}
+		// debug
+		//buffer.DebugDump(g_Reflector.m_DebugFile);
 	}
 }
 
