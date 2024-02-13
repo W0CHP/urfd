@@ -182,7 +182,6 @@ void CProtocol::CheckStreamsTimeout(void)
 		// time out ?
 		if ( it->second->IsExpired() )
 		{
-			std::cout << "Packet Stream from " << it->second->GetOwnerClient()->GetCallsign() << " timed out" << std::endl;
 			// yes, close it
 			g_Reflector.CloseStream(it->second);
 			// and remove it from the m_Streams map

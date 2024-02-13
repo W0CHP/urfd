@@ -57,7 +57,6 @@ bool CG3Protocol::Initialize(const char */*type*/, const EProtocol /*type*/, con
 	else
 		return false;
 
-	std::cout << "Protocol " << m_Name << " on Port " << G3_DV_PORT << " listening on IPv4" << std::endl;
 
 	//create helper socket
 	ip.SetPort(G3_PRESENCE_PORT);
@@ -81,13 +80,24 @@ bool CG3Protocol::Initialize(const char */*type*/, const EProtocol /*type*/, con
 	}
 
 	// start helper threads
-	m_Future         = std::async(std::launch::async, &CG3Protocol::Thread, this);
-	m_PresenceFuture = std::async(std::launch::async, &CG3Protocol::PresenceThread, this);
-	m_ConfigFuture   = std::async(std::launch::async, &CG3Protocol::ConfigThread, this);
-	m_IcmpFuture     = std::async(std::launch::async, &CG3Protocol::IcmpThread, this);
+	try
+	{
+		m_Future         = std::async(std::launch::async, &CG3Protocol::Thread, this);
+		m_PresenceFuture = std::async(std::launch::async, &CG3Protocol::PresenceThread, this);
+		m_ConfigFuture   = std::async(std::launch::async, &CG3Protocol::ConfigThread, this);
+		m_IcmpFuture     = std::async(std::launch::async, &CG3Protocol::IcmpThread, this);
+	}
+	catch(const std::exception& e)
+	{
+		std::cerr << "Could not start all " << m_Name << "Protocol threads: " << e.what() << std::endl;
+		return false;
+	}
+
 
 	// update time
 	m_LastKeepaliveTime.start();
+
+	std::cout << "Protocol " << m_Name << " on Port " << G3_DV_PORT << ", " << G3_PRESENCE_PORT << " and " << G3_CONFIG_PORT << " listening on IPv4" << std::endl;
 
 	return true;
 }
