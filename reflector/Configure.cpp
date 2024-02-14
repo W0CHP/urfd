@@ -563,7 +563,7 @@ bool CConfigure::ReadData(const std::string &path)
 			std::string ipv6;
 			CCurlGet curl;
 			std::stringstream ss;
-			if (CURLE_OK == curl.GetURL("https://ipv4.icanhazip.com", ss))
+			if (CURLE_OK == curl.GetURL("https://ipv6.icanhazip.com", ss))
 			{
 				ipv6.assign(ss.str());
 				trim(ipv6);
