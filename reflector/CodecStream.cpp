@@ -30,21 +30,6 @@ CCodecStream::CCodecStream(CPacketStream *PacketStream, char module) : m_CSModul
 	m_PacketStream = PacketStream;
 }
 
-////////////////////////////////////////////////////////////////////////////////////////
-// destructor
-
-CCodecStream::~CCodecStream()
-{
-	// kill the thread
-	keep_running = false;
-	if ( m_Future.valid() )
-	{
-		m_Future.get();
-	}
-	// and close the socket
-	m_TCReader.Close();
-}
-
 void CCodecStream::ResetStats(uint16_t streamid, ECodecType type)
 {
 	m_IsOpen = true;
@@ -102,7 +87,14 @@ bool CCodecStream::InitCodecStream()
 
 void CCodecStream::StopCodecThread()
 {
+	// kill the thread
 	keep_running = false;
+	if ( m_Future.valid() )
+	{
+		m_Future.get();
+	}
+	// and close the socket
+	m_TCReader.Close();
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////

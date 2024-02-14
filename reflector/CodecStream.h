@@ -42,7 +42,7 @@ public:
 	void ReportStats();
 
 	// destructor
-	virtual ~CCodecStream();
+	virtual ~CCodecStream() {}
 
 	// get
 	uint16_t GetStreamId(void) const          { return m_uiStreamId; }
