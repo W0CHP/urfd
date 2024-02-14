@@ -33,7 +33,7 @@ CPacketStream::CPacketStream(char module) : m_PSModule(module)
 
 bool CPacketStream::InitCodecStream()
 {
-	m_CodecStream = std::unique_ptr<CCodecStream>(new CCodecStream(this, m_PSModule));
+	m_CodecStream = std::make_unique<CCodecStream>(this, m_PSModule);
 	if (m_CodecStream)
 		return m_CodecStream->InitCodecStream();
 	else
@@ -46,7 +46,10 @@ bool CPacketStream::InitCodecStream()
 void CPacketStream::StopCodecStream()
 {
 	if (m_CodecStream)
+	{
 		m_CodecStream->StopCodecThread();
+		m_CodecStream.reset();
+	}
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////

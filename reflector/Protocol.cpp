@@ -68,19 +68,17 @@ bool CProtocol::Initialize(const char *type, const EProtocol ptype, const uint16
 		}
 	}
 
-	if (g_Configure.IsString(g_Keys.ip.ipv6bind))
+	const auto hasIPv6Bind = g_Configure.IsString(g_Keys.ip.ipv6bind);
+	if (hasIPv6Bind && has_ipv6)
 	{
-		if (has_ipv6)
+		const std::string ipv6binding(g_Configure.GetString(g_Keys.ip.ipv6bind));
+		CIp ip6(AF_INET6, port, ipv6binding.c_str());
+		if ( ip6.IsSet() )
 		{
-			const std::string ipv6binding(g_Configure.GetString(g_Keys.ip.ipv6bind));
-			CIp ip6(AF_INET6, port, ipv6binding.c_str());
-			if ( ip6.IsSet() )
+			if (! m_Socket6.Open(ip6))
 			{
-				if (! m_Socket6.Open(ip6))
-				{
-					m_Socket4.Close();
-					return false;
-				}
+				m_Socket4.Close();
+				return false;
 			}
 		}
 	}
@@ -101,11 +99,11 @@ bool CProtocol::Initialize(const char *type, const EProtocol ptype, const uint16
 	if (has_ipv4)
 	{
 		stacks.assign("IPv4");
-		if (has_ipv6)
+		if (has_ipv6 && hasIPv6Bind)
 			stacks.append(" and IPv6");
 	}
 	else
-		stacks.assign("IPv4");
+		stacks.assign("IPv6");
 
 	std::cout << m_Name << " using Port " << port << " listening on " << stacks << std::endl;
 

@@ -94,10 +94,10 @@ do
 	if [ "$pcount" -gt 1 ]; then
 		echo
 		ps -aux | head -1
-		ps -aux | grep -e urfd -e tcd | grep -v grep | grep -v radmin
+		ps -aux | grep -e urfd -e tcd | grep -vE 'grep|journalctl'
 	fi
 	echo
-	echo "        Reflector Administration, Version #230308"
+	echo "        Reflector Administration, Version #2240214"
 	echo
 	git status | head -1
 	echo

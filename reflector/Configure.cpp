@@ -141,24 +141,6 @@ bool CConfigure::ReadData(const std::string &path)
 		return true;
 	}
 
-	std::string ipv4, ipv6;
-
-	{
-		CCurlGet curl;
-		std::stringstream ss;
-		if (CURLE_OK == curl.GetURL("https://ipv4.icanhazip.com", ss))
-		{
-			ipv4.assign(ss.str());
-			trim(ipv4);
-		}
-		ss.str(std::string());
-		if (CURLE_OK == curl.GetURL("https://ipv6.icanhazip.com", ss))
-		{
-			ipv6.assign(ss.str());
-			trim(ipv6);
-		}
-	}
-
 	std::string line;
 	while (std::getline(cfgfile, line))
 	{
@@ -529,6 +511,16 @@ bool CConfigure::ReadData(const std::string &path)
 	{
 		if (std::regex_match(data[g_Keys.ip.ipv4bind].get<std::string>(), IPv4RegEx))
 		{
+			// use curl to find the ipv4 external address
+			std::string ipv4;
+			CCurlGet curl;
+			std::stringstream ss;
+			if (CURLE_OK == curl.GetURL("https://ipv4.icanhazip.com", ss))
+			{
+				ipv4.assign(ss.str());
+				trim(ipv4);
+			}
+
 			if (data.contains(g_Keys.ip.ipv4address))
 			{
 				auto v4 = data[g_Keys.ip.ipv4address].get<std::string>();
@@ -567,6 +559,16 @@ bool CConfigure::ReadData(const std::string &path)
 	{
 		if (std::regex_match(data[g_Keys.ip.ipv6bind].get<std::string>(), IPv6RegEx))
 		{
+			// use curl to find the ipv6 external address
+			std::string ipv6;
+			CCurlGet curl;
+			std::stringstream ss;
+			if (CURLE_OK == curl.GetURL("https://ipv4.icanhazip.com", ss))
+			{
+				ipv6.assign(ss.str());
+				trim(ipv6);
+			}
+
 			if (data.contains(g_Keys.ip.ipv6address))
 			{
 				auto v6 = data[g_Keys.ip.ipv6address].get<std::string>();
@@ -996,7 +998,7 @@ int main(int argc, char *argv[])
 			d.Dump(('n' == argv[1][1]) ? true : false);
 		return rval ? EXIT_FAILURE : EXIT_SUCCESS;
 	}
-	std::cerr << "Usage: " << argv[0] << " -(q|n|v) FILENAME\nWhere:\n\t-q just prints warnings and errors.\n\t-n also prints keys that begin with an uppercase letter.\n\t-v prints all keys, warnings and errors." << std::endl;
+	std::cerr << "Usage: " << argv[0] << " -(q|n|v) FILENAME\nWhere:\n\t-q just prints warnings and errors.\n\t-n just prints keys that begin with an uppercase letter.\n\t-v prints all keys, warnings and errors." << std::endl;
 	return EXIT_SUCCESS;
 }
 #endif
