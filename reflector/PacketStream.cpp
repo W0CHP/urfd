@@ -43,6 +43,12 @@ bool CPacketStream::InitCodecStream()
 	}
 }
 
+void CPacketStream::StopCodecStream()
+{
+	if (m_CodecStream)
+		m_CodecStream->StopCodecThread();
+}
+
 ////////////////////////////////////////////////////////////////////////////////////////
 // open / close
 

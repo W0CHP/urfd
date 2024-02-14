@@ -100,6 +100,11 @@ bool CCodecStream::InitCodecStream()
 	return false;
 }
 
+void CCodecStream::StopCodecThread()
+{
+	keep_running = false;
+}
+
 ////////////////////////////////////////////////////////////////////////////////////////
 // thread
 

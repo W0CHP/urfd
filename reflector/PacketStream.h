@@ -36,6 +36,7 @@ class CPacketStream
 public:
 	CPacketStream(char module);
 	bool InitCodecStream();
+	void StopCodecStream();
 
 	// open / close
 	bool OpenPacketStream(const CDvHeaderPacket &, std::shared_ptr<CClient>);

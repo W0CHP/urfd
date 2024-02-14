@@ -186,6 +186,8 @@ void CReflector::Stop(void)
 	// stop & delete all router thread
 	for (auto c : m_Modules)
 	{
+		m_Stream[c]->StopCodecStream();	// if it has a codecstream, this will stop its processing thread
+
 		// push an empty Frame Packet to the stream to unlock PopWait() in the module thread
 		m_Stream[c]->Push(std::make_unique<CDvFramePacket>());
 		if (m_ModuleFuture[c].valid())

@@ -36,6 +36,7 @@ public:
 	// constructor
 	CCodecStream(CPacketStream *packetstream, char module);
 	bool InitCodecStream();
+	void StopCodecThread();
 
 	void ResetStats(uint16_t streamid, ECodecType codectype);
 	void ReportStats();
