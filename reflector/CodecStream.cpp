@@ -145,7 +145,7 @@ void CCodecStream::Task(void)
 			// do things look okay?
 			if (pack.module != m_CSModule)
 				std::cerr << "CodecStream '" << m_CSModule << "' received a transcoded packet from module '" << pack.module << "'" << std::dec << std::noshowbase << std::endl;
-			if (pack.sequence != Frame->GetCodecPacket()->sequence)
+			if ((10 == pack.sequence) && (pack.sequence != Frame->GetCodecPacket()->sequence)) // only do this once
 				std::cerr << "Sequence mismatch: this voice frame=" << Frame->GetCodecPacket()->sequence << " returned transcoder packet=" << pack.sequence << std::endl;
 			if (pack.streamid != Frame->GetCodecPacket()->streamid)
 				std::cerr << std::hex  << std::showbase << "StreamID mismatch: this voice frame=" << ntohs(Frame->GetCodecPacket()->streamid) << " returned transcoder packet=" << ntohs(pack.streamid) << std::dec << std::noshowbase << std::endl;
