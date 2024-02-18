@@ -157,30 +157,11 @@ void CProtocol::HandleQueue(void)
 {
 	while(! m_Queue.IsEmpty())
 	{
-		uint16_t stream_id;
-
 		// get the next packet
 		auto packet = m_Queue.Pop();
 
-		// is it the last packet
-		const auto is_last_packet = packet->IsLastPacket() && packet->IsDvFrame();
-		if (is_last_packet)
-		{
-			stream_id = packet->GetStreamId();
-		}
+		HandlePacket(std::move(packet)); // protocol specific handling, i.e., it will be endcoded and sent to clients
 
-		HandlePacket(std::move(packet)); // protocol specific handling, i.e., it will be endcoded and sent to clientsm
-
-		// tie up loose ends if this is the last packet
-		if (is_last_packet)
-		{
-			auto it = m_Streams.find(stream_id);
-			if (m_Streams.end() != it)
-			{
-				g_Reflector.CloseStream(it->second);
-				m_Streams.erase(stream_id);
-			}
-		}
 	}
 }
 

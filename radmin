@@ -97,7 +97,7 @@ do
 		ps -aux | grep -e urfd -e tcd | grep -vE 'grep|journalctl'
 	fi
 	echo
-	echo "        Reflector Administration, Version #2240214"
+	echo "        Reflector Administration, Version #240214"
 	echo
 	git status | head -1
 	echo
