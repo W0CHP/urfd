@@ -84,14 +84,14 @@ void CClient::WriteXml(std::ofstream &xmlFile)
 	xmlFile << "\t<IP>" << m_Ip.GetAddress() << "</IP>" << std::endl;
 	xmlFile << "\t<LinkedModule>" << m_ReflectorModule << "</LinkedModule>" << std::endl;
 	xmlFile << "\t<Protocol>" << GetProtocolName() << "</Protocol>" << std::endl;
-	char mbstr[100];
-	if (std::strftime(mbstr, sizeof(mbstr), "%A %c", std::localtime(&m_ConnectTime)))
+	char s[100];
+	if (std::strftime(s, sizeof(s), "%FT%TZ", std::gmtime(&m_ConnectTime)))
 	{
-		xmlFile << "\t<ConnectTime>" << mbstr << "</ConnectTime>" << std::endl;
+		xmlFile << "\t<ConnectTime>" << s << "</ConnectTime>" << std::endl;
 	}
-	if (std::strftime(mbstr, sizeof(mbstr), "%A %c", std::localtime(&m_LastHeardTime)))
+	if (std::strftime(s, sizeof(s), "%FT%TZ", std::gmtime(&m_LastHeardTime)))
 	{
-		xmlFile << "\t<LastHeardTime>" << mbstr << "</LastHeardTime>" << std::endl;
+		xmlFile << "\t<LastHeardTime>" << s << "</LastHeardTime>" << std::endl;
 	}
 	xmlFile << "</NODE>" << std::endl;
 }
