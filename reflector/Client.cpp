@@ -84,15 +84,8 @@ void CClient::WriteXml(std::ofstream &xmlFile)
 	xmlFile << "\t<IP>" << m_Ip.GetAddress() << "</IP>" << std::endl;
 	xmlFile << "\t<LinkedModule>" << m_ReflectorModule << "</LinkedModule>" << std::endl;
 	xmlFile << "\t<Protocol>" << GetProtocolName() << "</Protocol>" << std::endl;
-	char mbstr[100];
-	if (std::strftime(mbstr, sizeof(mbstr), "%FT%TZ", std::gmtime(&m_ConnectTime)))
-	{
-		xmlFile << "\t<ConnectTime>" << mbstr << "</ConnectTime>" << std::endl;
-	}
-	if (std::strftime(mbstr, sizeof(mbstr), "%FT%TZ", std::gmtime(&m_LastHeardTime)))
-	{
-		xmlFile << "\t<LastHeardTime>" << mbstr << "</LastHeardTime>" << std::endl;
-	}
+	xmlFile << "\t<ConnectTime>" << m_ConnectTime << "</ConnectTime>" << std::endl;
+	xmlFile << "\t<LastHeardTime>" << m_LastHeardTime << "</LastHeardTime>" << std::endl;
 	xmlFile << "</NODE>" << std::endl;
 }
 
@@ -103,7 +96,7 @@ void CClient::JsonReport(nlohmann::json &report)
 	jclient["OnModule"] = std::string(1, m_ReflectorModule);
 	jclient["Protocol"] = GetProtocolName();
 	char s[100];
-	if (std::strftime(s, sizeof(s), "%FT%TZ", std::gmtime(&m_ConnectTime)))
+	if (std::strftime(s, sizeof(s), "%m-%d %TZ", std::gmtime(&m_ConnectTime)))
 		jclient["ConnectTime"] = s;
 	report["Clients"].push_back(jclient);
 }
