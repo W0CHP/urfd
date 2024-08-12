@@ -17,13 +17,13 @@ class Node {
       $this->IP            = $IP;
 
       $this->Protocol      = $Protocol;
-      $this->ConnectTime   = ParseTime($ConnectTime);
-      $this->LastHeardTime = ParseTime($LastHeardTime);
-   
+      $this->ConnectTime   = $ConnectTime;
+      $this->LastHeardTime = $LastHeardTime;
+
       $this->FullCallsign  = trim(str_replace("   ", "-", $Callsign));
       $this->FullCallsign  = str_replace("  ", "-", $this->FullCallsign);
-      $this->FullCallsign  = str_replace(" ", "-", $this->FullCallsign); 
-      
+      $this->FullCallsign  = str_replace(" ", "-", $this->FullCallsign);
+
       if (strpos($Callsign, " ") !== false) {
          $this->Callsign      = trim(substr($Callsign, 0, strpos($Callsign, " ")));
          $this->Suffix        = trim(substr($Callsign, strpos($Callsign, " "), strlen($Callsign)));
@@ -49,7 +49,7 @@ class Node {
    public function GetSuffix()               { return $this->Suffix;         }
    public function GetPrefix()               { return $this->Prefix;         }
    public function GetRandomID()             { return $this->RandomID;       }
-   
+
 }
 
 ?>
