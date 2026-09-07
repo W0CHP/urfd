@@ -517,10 +517,16 @@ bool CDmrmmdvmProtocol::IsValidDisconnectPacket(const CBuffer &Buffer, CCallsign
 {
 	uint8_t tag[] = { 'R','P','T','C','L' };
 
+	// Standard Homebrew/MMDVM close packet is tag(5) + repeater id(4) = 9 bytes,
+	// with the id starting right after the tag -- same convention as RPTL/RPTK/RPTC
+	// above. This previously checked size==13 and read the id from offset 4 (one
+	// byte *into* the tag), so a spec-compliant 9-byte RPTCL from any real
+	// repeater/client was never recognized and just lingered until the keepalive
+	// timeout reaped it instead of disconnecting cleanly.
 	bool valid = false;
-	if ( (Buffer.size() == 13) && (Buffer.Compare(tag, sizeof(tag)) == 0) )
+	if ( (Buffer.size() == 9) && (Buffer.Compare(tag, sizeof(tag)) == 0) )
 	{
-		uint32_t uiRptrId = MAKEDWORD(MAKEWORD(Buffer.data()[7],Buffer.data()[6]),MAKEWORD(Buffer.data()[5],Buffer.data()[4]));
+		uint32_t uiRptrId = MAKEDWORD(MAKEWORD(Buffer.data()[8],Buffer.data()[7]),MAKEWORD(Buffer.data()[6],Buffer.data()[5]));
 		callsign->SetDmrid(uiRptrId, true);
 		callsign->SetCSModule(MMDVM_MODULE_ID);
 		valid = callsign->IsValid();
