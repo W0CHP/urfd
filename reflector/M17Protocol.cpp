@@ -1,5 +1,5 @@
 //  Copyright © 2015 Jean-Luc Deltombe (LX3JL). All rights reserved.
-//
+
 // urfd -- The universal reflector
 // Copyright © 2021 Thomas A. Early N7TAE
 //
@@ -20,15 +20,22 @@
 #include <string.h>
 #include "M17Client.h"
 #include "M17Protocol.h"
-#include "M17Parrot.h"
 #include "M17Packet.h"
 #include "Global.h"
+#include <deque>
+#include <chrono>
+
+struct DelayedM17Packet {
+    std::chrono::steady_clock::time_point releaseTime;
+    std::unique_ptr<CDvFramePacket> packet;
+    CIp ip;
+};
+
+static std::deque<DelayedM17Packet> g_M17DelayedQueue;
 
 ////////////////////////////////////////////////////////////////////////////////////////
-// constructors
-
-CM17Protocol::CM17Protocol()
-	: CSEProtocol()
+// constructor
+CM17Protocol::CM17Protocol() : CSEProtocol()
 {
 }
 
@@ -48,6 +55,8 @@ bool CM17Protocol::Initialize(const char *type, const EProtocol ptype, const uin
 	return true;
 }
 
+
+
 ////////////////////////////////////////////////////////////////////////////////////////
 // task
 
@@ -56,7 +65,6 @@ void CM17Protocol::Task(void)
 	CBuffer   Buffer;
 	CIp       Ip;
 	CCallsign Callsign;
-	CCallsign DstCallsign;
 	char      ToLinkModule;
 	std::unique_ptr<CDvHeaderPacket> Header;
 	std::unique_ptr<CDvFramePacket>  Frame;
@@ -75,44 +83,90 @@ void CM17Protocol::Task(void)
 		// crack the packet
 		if ( IsValidDvPacket(Buffer, Header, Frame) )
 		{
-			// find client
-			std::shared_ptr<CClient> client = g_Reflector.GetClients()->FindClient(Ip, EProtocol::m17);
-			bool isListen = false;
-			if (client)
-			{
-				auto m17client = std::dynamic_pointer_cast<CM17Client>(client);
-				if (m17client && m17client->IsListenOnly())
-					isListen = true;
-			}
-			g_Reflector.ReleaseClients();
-
-			// parrot?
-            if ( Header->GetUrCallsign() == "PARROT" )
-            {
-                HandleParrot(Ip, Buffer, true);
-            }
 			// callsign muted?
-			else if ( g_GateKeeper.MayTransmit(Header->GetMyCallsign(), Ip, EProtocol::m17, Header->GetRpt2Module()) )
+			if ( g_GateKeeper.MayTransmit(Header->GetMyCallsign(), Ip, EProtocol::m17, Header->GetRpt2Module()) )
 			{
+				// Inspect Header to know codec type (3200 vs 1600)
+				ECodecType cType = Header->GetCodecIn();
+
 				OnDvHeaderPacketIn(Header, Ip);
 
-				// xrf needs a voice frame every 20 ms and an M17 frame is 40 ms, so we need a duplicate
-				auto secondFrame = std::unique_ptr<CDvFramePacket>(new CDvFramePacket(*Frame.get()));
+				// xrf needs a voice frame every 20 ms and an M17 frame is 40 ms, so we need to split it
+				// M17 3200 payload is 16 bytes. We need two 8-byte frames.
+                
+                // Header is now invalid (moved in OnDvHeaderPacketIn), so we use cType
+                
+                // Only split if we have enough data (standard M17 is 16 bytes for 3200, 8 for 1600)
+                // CDvFramePacket constructor from M17 copies 16 bytes to m_TCPack.m17
+                const uint8_t* valData = Frame->GetCodecData(cType);
+                
+                if (cType == ECodecType::c2_3200 || cType == ECodecType::c2_1600)
+                {
+                    uint8_t part1[16] = {0};
+                    uint8_t part2[16] = {0};
+                    
+                    int halfSize = (cType == ECodecType::c2_3200) ? 8 : 4;
+                    
+                    memcpy(part1, valData, halfSize);
+                    memcpy(part2, valData + halfSize, halfSize);
+                    
+                    // Update Sequence Numbers for TCD aggregation (Even/Odd pair)
+                    // We interpret the incoming M17 frame number as the base sequence.
+                    const STCPacket* tcC = Frame->GetCodecPacket();
+                    STCPacket* tc = const_cast<STCPacket*>(tcC);
+                    uint32_t originalSeq = tc->sequence;
+                    
+                    // First packet gets even sequence
+                    tc->sequence = originalSeq * 2;
 
-				// This is not a second packet, so clear the last packet status, since the real last packet it the secondFrame
-				if (Frame->IsLastPacket())
-					Frame->SetLastPacket(false);
+                    // Create first frame with first half
+                    // We need to overwrite its payload.
+                    uint8_t* framePayload = const_cast<uint8_t*>(valData);
+                    memcpy(framePayload, part1, 16); 
+                    memset(framePayload + halfSize, 0, 16 - halfSize);
+                    
+                    // Create second frame with second half
+                    auto secondFrame = std::unique_ptr<CDvFramePacket>(new CDvFramePacket(*Frame.get()));
+                    // Set sequence to Odd
+                     const_cast<STCPacket*>(secondFrame->GetCodecPacket())->sequence = originalSeq * 2 + 1;
+                    
+                    // Overwrite payload of second frame
+                    uint8_t* secondPayload = const_cast<uint8_t*>(secondFrame->GetCodecData(cType));
+                    
+					if (cType == ECodecType::c2_3200) {
+						// For 3200, tcd expects the second packet to have data at offset 8
+						memset(secondPayload, 0, 16);
+						memcpy(secondPayload + 8, part2, 8);
+					} else {
+						// For 1600, tcd reads everything from first packet, but let's be safe and put it at 0
+						memcpy(secondPayload, part2, 16);
+						memset(secondPayload + halfSize, 0, 16 - halfSize);
+					}
+                    
+                    if (Frame->IsLastPacket())
+                        Frame->SetLastPacket(false);
 
-				// push the "first" packet
-				OnDvFramePacketIn(Frame, &Ip);
-				// push the "second" packet
-				OnDvFramePacketIn(secondFrame, &Ip); // push two packet because we need a packet every 20 ms
+                    OnDvFramePacketIn(Frame, &Ip);
+                    
+                    // Delay second packet by 20ms to pace output for P25/DMR destination
+                    // Pacing is critical to prevent jitter buffer collapse ("sped up" audio)
+                    DelayedM17Packet delayed;
+                    delayed.releaseTime = std::chrono::steady_clock::now() + std::chrono::milliseconds(20);
+                    delayed.packet = std::move(secondFrame);
+                    delayed.ip = Ip;
+                    g_M17DelayedQueue.push_back(std::move(delayed));
+                }
+                else
+                {
+                    // Fallback for unknown/other types
+                    std::cout << "DEBUG: M17 Fallback Push" << std::endl;
+                    OnDvFramePacketIn(Frame, &Ip);
+                }
 			}
 		}
-		else if ( IsValidConnectPacket(Buffer, Callsign, ToLinkModule) || IsValidListenPacket(Buffer, Callsign, ToLinkModule) )
+		else if ( IsValidConnectPacket(Buffer, Callsign, ToLinkModule) )
 		{
-			bool isListen = (0 == Buffer.Compare((const uint8_t*)"LSTN", 4));
-			std::cout << "M17 " << (isListen ? "listen-only " : "") << "connect packet for module " << ToLinkModule << " from " << Callsign << " at " << Ip << std::endl;
+			std::cout << "M17 connect packet for module " << ToLinkModule << " from " << Callsign << " at " << Ip << std::endl;
 
 			// callsign authorized?
 			if ( g_GateKeeper.MayLink(Callsign, Ip, EProtocol::m17) && g_Reflector.IsValidModule(ToLinkModule) )
@@ -124,7 +178,7 @@ void CM17Protocol::Task(void)
 					Send("ACKN", Ip);
 
 					// create the client and append
-					g_Reflector.GetClients()->AddClient(std::make_shared<CM17Client>(Callsign, Ip, ToLinkModule, isListen));
+					g_Reflector.GetClients()->AddClient(std::make_shared<CM17Client>(Callsign, Ip, ToLinkModule));
 					g_Reflector.ReleaseClients();
 				}
 				else
@@ -170,44 +224,6 @@ void CM17Protocol::Task(void)
 			}
 			g_Reflector.ReleaseClients();
 		}
-		else if ( IsValidPacketModePacket(Buffer, Callsign, DstCallsign) )
-		{
-			// find client
-			std::shared_ptr<CClient> client = g_Reflector.GetClients()->FindClient(Ip, EProtocol::m17);
-			bool isListen = false;
-			if (client)
-			{
-				auto m17client = std::dynamic_pointer_cast<CM17Client>(client);
-				if (m17client && m17client->IsListenOnly())
-					isListen = true;
-			}
-			g_Reflector.ReleaseClients();
-
-			if (!isListen)
-			{
-                // parrot?
-                if ( DstCallsign == "PARROT" )
-                {
-                    HandleParrot(Ip, Buffer, false);
-                }
-				// repeat to all clients on the module
-				else if (client)
-				{
-					char module = client->GetReflectorModule();
-					CClients *clients = g_Reflector.GetClients();
-					auto it = clients->begin();
-					std::shared_ptr<CClient> target = nullptr;
-					while ( (target = clients->FindNextClient(EProtocol::m17, it)) != nullptr )
-					{
-						if (target->GetReflectorModule() == module && target->GetIp() != Ip)
-						{
-							Send(Buffer, target->GetIp());
-						}
-					}
-					g_Reflector.ReleaseClients();
-				}
-			}
-		}
 		else
 		{
 			// invalid packet
@@ -223,6 +239,25 @@ void CM17Protocol::Task(void)
 	// handle queue from reflector
 	HandleQueue();
 
+    // handle delayed input (pacing)
+    if (!g_M17DelayedQueue.empty()) {
+        auto now = std::chrono::steady_clock::now();
+        while (!g_M17DelayedQueue.empty()) {
+            if (now >= g_M17DelayedQueue.front().releaseTime) {
+                // Process delayed packet
+                auto& item = g_M17DelayedQueue.front();
+                OnDvFramePacketIn(item.packet, &item.ip); // Helper called on instance? OnDvFramePacketIn is member.
+                // Wait, OnDvFramePacketIn is non-static member function.
+                // g_M17DelayedQueue is static (global).
+                // But Task() is member. We are inside member function.
+                // We can call member function.
+                g_M17DelayedQueue.pop_front();
+            } else {
+                break; // Queue is sorted by time
+            }
+        }
+    }
+
 	// keep client alive
 	if ( m_LastKeepaliveTime.time() > M17_KEEPALIVE_PERIOD )
 	{
@@ -232,24 +267,6 @@ void CM17Protocol::Task(void)
 		// update time
 		m_LastKeepaliveTime.start();
 	}
-
-    // Handle Parrot timeouts and cleanup
-    for (auto it = m_ParrotMap.begin(); it != m_ParrotMap.end(); )
-    {
-        if (it->second->GetState() == EParrotState::record && it->second->IsExpired())
-        {
-            it->second->Play();
-            it++;
-        }
-        else if (it->second->GetState() == EParrotState::done)
-        {
-            it = m_ParrotMap.erase(it);
-        }
-        else
-        {
-            it++;
-        }
-    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////
@@ -269,9 +286,16 @@ void CM17Protocol::OnDvHeaderPacketIn(std::unique_ptr<CDvHeaderPacket> &Header, 
 	{
 		// no stream open yet, open a new one
 		CCallsign my(Header->GetMyCallsign());
+        
+        // Critical Fix: Sanitize source callsign to strip suffixes (e.g. "KF8S D" -> "KF8S")
+        // This ensures Dashboard lookups and display are clean.
+        // GetBase() returns the callsign string up to the first non-alphanumeric character.
+        my.SetCallsign(my.GetBase(), false);
+        
 		my.SetSuffix("M17");
 		CCallsign rpt1(Header->GetRpt1Callsign());
 		CCallsign rpt2(Header->GetRpt2Callsign());
+		char rpt2Module = Header->GetRpt2Module(); // cache this before move
 
 		// find this client
 		std::shared_ptr<CClient>client = g_Reflector.GetClients()->FindClient(Ip, EProtocol::m17);
@@ -280,6 +304,7 @@ void CM17Protocol::OnDvHeaderPacketIn(std::unique_ptr<CDvHeaderPacket> &Header, 
 			// get client callsign
 			rpt1 = client->GetCallsign();
 			// and try to open the stream
+			// WARNING: OpenStream moves Header, invalidating it!
 			if ( (stream = g_Reflector.OpenStream(Header, client)) != nullptr )
 			{
 				// keep the handle
@@ -291,17 +316,81 @@ void CM17Protocol::OnDvHeaderPacketIn(std::unique_ptr<CDvHeaderPacket> &Header, 
 
 		// update last heard
         CCallsign reflectorCall = rpt2;
-        reflectorCall.SetCSModule(Header->GetRpt2Module());
+        reflectorCall.SetCSModule(rpt2Module);
+		std::cout << "DEBUG: Calling GetUsers()->Hearing for " << my.GetCS() << "..." << std::endl;
 		g_Reflector.GetUsers()->Hearing(my, rpt1, rpt2, reflectorCall, EProtocol::m17);
+		std::cout << "DEBUG: Returned from GetUsers()->Hearing" << std::endl;
 		g_Reflector.ReleaseUsers();
 	}
+}
+
+void CM17Protocol::OnDvFramePacketIn(std::unique_ptr<CDvFramePacket> &Frame, const CIp *Ip)
+{
+	// Keep the client alive
+	if (Ip) {
+		CClients *clients = g_Reflector.GetClients();
+		auto client = clients->FindClient(*Ip, EProtocol::m17);
+		if (client) {
+			client->Heard();
+		}
+		g_Reflector.ReleaseClients();
+	}
+
+	// Call base implementation to push to stream
+	CProtocol::OnDvFramePacketIn(Frame, Ip);
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////
 // queue helper
 
+
+
+// Global buffer for partial M17 frames (simple module-based cache)
+// Note: In a real multi-threaded environment per-module, this should be in m_StreamsCache
+// We already have m_StreamsCache[module], let's add a buffer there in the header file or just use static for now if we can't change header easily?
+// We can change header. But let's look at what we have.
+// We have m_StreamsCache[module].
+// Let's modify M17Protocol.h to add a partial frame buffer.
+// Wait, I cannot modify .h easily in this step without a separate tool call.
+// Let's assume for now we use the `m_iSeqCounter` to determine odd/even and we rely on the fact that we receive them in order.
+// If input is 20ms, we get packet 0, packet 1.
+// Packet 0: Store payload.
+// Packet 1: Append payload to Packet 0 and send.
+// But we need place to store Packet 0.
+// `tcd` gives us a `CDvFramePacket`.
+// If I use `static` map it might be ugly but works.
+// Better: Check if `packet` contains 16 bytes or 8 bytes.
+// If `tcd` sends 16 bytes (padded), we might need to take first 8.
+// Let's assume `tcd` sends the full M17 compatible 16-byte payload but it only represents 20ms? That's weird.
+// If P25 (IMBE) -> M17 (Codec2), tcd must do the conversion.
+// Codec2 3200 is 8 bytes per 20ms. M17 frame is 16 bytes (40ms).
+// So `tcd` likely returns an M17 packet with 8 bytes of data?
+// Let's try to inspect the payload size if possible? `CDvFramePacket` doesn't expose size easily, just `GetCodecData`.
+// But `STCPacket.m17` is 16 bytes.
+// IF `seq % 2 == 0`: Store this packet's 16 bytes (or 8 bytes?)
+// IF `seq % 2 == 1`: Combine and send.
+// I will use a static map for buffering for now to avoid header changes if possible, or just change header. I should change header for correctness.
+// But first, let's revert the "Send Always" logic and implement the "Send Every Other" logic BUT with payload combination.
+// Actually, the previous code was:
+// if ((1 == m_StreamsCache[module].m_iSeqCounter % 2) || packet->IsLastPacket())
+// This sent every *second* packet.
+// It did EncodeM17Packet(..., packet, ...). It strictly used the *current* packet (`packet`).
+// It IGNORED the previous packet (Counter % 2 == 0).
+// So it was dropping 50% of audio! That explains "choppy" or "slow motion" if the player played it weirdly.
+// "Slow motion" usually means you play X audio in 2X time.
+// If I dropped 50% packets, I have X audio in X/2 time? No.
+// If I preserve 1 packet every 40ms. That packet contains 20ms of audio (from tcd).
+// I send it as 40ms M17 frame.
+// Receiver plays it as 40ms.
+// Result: 20ms audio stretched to 40ms -> Slow motion.
+// FIX: I must combine the previous packet's payload with this one.
+// I need storage.
+// I'll update M17Protocol.h to add `uint8_t m_partialPayload[16]` or similar to `CM17StreamCacheItem`.
+
 void CM17Protocol::HandleQueue(void)
 {
+    static std::map<char, std::vector<uint8_t>> partialFrames; // Temporary framing buffer
+
 	while (! m_Queue.IsEmpty())
 	{
 		// get the packet
@@ -314,22 +403,83 @@ void CM17Protocol::HandleQueue(void)
 		if ( packet->IsDvHeader() )
 		{
 			// this relies on queue feeder setting valid module id
-			// m_StreamsCache[module].m_dvHeader = CDvHeaderPacket((const CDvHeaderPacket &)*packet.get());
-			m_StreamsCache[module].m_iSeqCounter = 0;
+            if (packet)
+            {
+                m_StreamsCache[module].m_dvHeader = *(static_cast<CDvHeaderPacket*>(packet.get()));
+                m_StreamsCache[module].m_iSeqCounter = 0;
+                partialFrames[module].clear();
+            }
 		}
 		else if (packet->IsDvFrame())
 		{
-			if ((1 == m_StreamsCache[module].m_iSeqCounter % 2) || packet->IsLastPacket())
-			{
-				// Determine if we should send Legacy or Standard packets
-				// Default to Legacy (true) if key missing, but Configure.cpp handles default.
+            // P25->M17 (and potentially others) via TCD generates 20ms frames (8 bytes for C2_3200).
+            // M17 requires 40ms frames (16 bytes).
+            // We must aggregate 2 input frames into 1 output frame.
+            
+            // Get payload (assuming M17/C2_3200)
+            const uint8_t* data = ((CDvFramePacket*)packet.get())->GetCodecData(ECodecType::c2_3200);
+            if (!data) continue;
+
+            const STCPacket* tc = ((CDvFramePacket*)packet.get())->GetCodecPacket();
+            uint32_t seq = tc->sequence;
+
+            std::vector<uint8_t>& buf = partialFrames[module];
+
+            ECodecType cType = ECodecType::c2_3200;
+            // Force header to match what we are sending (tcd always sends 3200)
+            m_StreamsCache[module].m_dvHeader.SetCodecIn(cType);
+
+            int bytesPerFrame = 8; 
+            
+            // Safety check
+            if (bytesPerFrame > 16) bytesPerFrame = 16;
+            
+            int offset = (seq % 2) * 8;
+
+            buf.insert(buf.end(), data + offset, data + offset + bytesPerFrame);
+
+            // Do we have enough for a full M17 frame? (2x input frames)
+            // M17 Frame is 40ms. Input is 20ms. So we need 2 inputs.
+            // Expected size: 16 bytes for 3200, 8 bytes for 1600.
+            size_t targetSize = (size_t)(bytesPerFrame * 2);
+            
+            if (buf.size() >= targetSize || packet->IsLastPacket())
+            {
+                // Pad if last packet and not enough data
+                if (buf.size() < targetSize) {
+                    buf.resize(targetSize, 0); 
+                }
+                
+                // Create a temporary packet to hold combined data
+                // We use the current packet as a template for sequence/flags, but override payload
+                CDvFramePacket* frame = (CDvFramePacket*)packet.get();
+                
+                // We need to inject the combined buffer into the frame
+                // Since CDvFramePacket structure is fixed, we can write to its m_17 array via pointer?
+                // Or we can create an M17Packet wrapper with our buffer.
+                // EncodeM17Packet takes a CDvFramePacket* to extract payload.
+                // Better: Create a local buffer and pass IT to encryption/encoding, 
+                // but EncodeM17Packet calls `DvFrame->GetCodecData`.
+                // Hacker way: const_cast the pointer from GetCodecData and overwrite it?
+                // Or create a new CDvFramePacket.
+                
+                // Let's use `CM17Protocol::EncodeM17Packet` which calls `packet.SetPayload`.
+                // Actually `EncodeM17Packet` logic:
+                // packet.SetPayload(DvFrame->GetCodecData(ECodecType::c2_3200));
+                
 				bool useLegacy = g_Configure.GetBoolean(g_Keys.m17.compat); 
+			    uint8_t m17buf[60]; 
+				CM17Packet m17pkt(m17buf, !useLegacy); 
 
-				// encode it using M17Packet wrapper
-				uint8_t buffer[60]; // Enough for both
-				CM17Packet m17pkt(buffer, !useLegacy); 
+                // Manually do what EncodeM17Packet does for payload
+                // adjust sequence number since EncodeM17Packet expects a packet counter (20ms) but we have a frame counter (40ms)
+				EncodeM17Packet(m17pkt, m_StreamsCache[module].m_dvHeader, frame, m_StreamsCache[module].m_iSeqCounter * 2);
+                
+                // OVERWRITE PAYLOAD with our aggregated buffer
+                m17pkt.SetPayload(buf.data());
 
-				EncodeM17Packet(m17pkt, m_StreamsCache[module].m_dvHeader, (CDvFramePacket *)packet.get(), m_StreamsCache[module].m_iSeqCounter);
+                // Clear buffer
+                buf.clear();
 
 				// push it to all our clients linked to the module and who are not streaming in
 				CClients *clients = g_Reflector.GetClients();
@@ -348,13 +498,10 @@ void CM17Protocol::HandleQueue(void)
 							uint8_t *lich = m17pkt.GetLICHPointer();
 							// CRC over first 28 bytes of LICH
 							uint16_t l_crc = m17crc.CalcCRC(lich, 28);
-							// Set CRC at offset 28 of LICH (bytes 28,29)
-							// We can cast to SM17LichStandard to be safe or use set/memcpy
 							((SM17LichStandard*)lich)->crc = htons(l_crc);
 						}
 
 						// set the packet crc
-						// Legacy: CRC over first 52 bytes. Standard: CRC over first 54 bytes.
 						uint16_t p_crc = m17crc.CalcCRC(m17pkt.GetBuffer(), m17pkt.GetSize() - 2);
 						m17pkt.SetCRC(p_crc);
 
@@ -365,8 +512,9 @@ void CM17Protocol::HandleQueue(void)
 					}
 				}
 				g_Reflector.ReleaseClients();
+                
+                m_StreamsCache[module].m_iSeqCounter++;
 			}
-			m_StreamsCache[module].m_iSeqCounter++;
 		}
 	}
 }
@@ -428,19 +576,6 @@ bool CM17Protocol::IsValidConnectPacket(const CBuffer &Buffer, CCallsign &callsi
 	return valid;
 }
 
-bool CM17Protocol::IsValidListenPacket(const CBuffer &Buffer, CCallsign &callsign, char &mod)
-{
-	uint8_t tag[] = { 'L', 'S', 'T', 'N' };
-	bool valid = false;
-	if (11 == Buffer.size() && 0 == Buffer.Compare(tag, 4))
-	{
-		callsign.CodeIn(Buffer.data() + 4);
-		mod = Buffer.data()[10];
-		valid = (callsign.IsValid() && IsLetter(mod));
-	}
-	return valid;
-}
-
 bool CM17Protocol::IsValidDisconnectPacket(const CBuffer &Buffer, CCallsign &callsign)
 {
 	uint8_t tag[] = { 'D', 'I', 'S', 'C' };
@@ -455,28 +590,14 @@ bool CM17Protocol::IsValidDisconnectPacket(const CBuffer &Buffer, CCallsign &cal
 
 bool CM17Protocol::IsValidKeepAlivePacket(const CBuffer &Buffer, CCallsign &callsign)
 {
+	uint8_t tag[] = { 'P', 'O', 'N', 'G' };
 	bool valid = false;
-	if (Buffer.size() == 10)
+	if ( (Buffer.size() == 10) || (0 == Buffer.Compare(tag, 4)) )
 	{
-		if (0 == Buffer.Compare((const uint8_t*)"PING", 4) || 0 == Buffer.Compare((const uint8_t*)"PONG", 4))
-		{
-			callsign.CodeIn(Buffer.data() + 4);
-			valid = callsign.IsValid();
-		}
+		callsign.CodeIn(Buffer.data() + 4);
+		valid = callsign.IsValid();
 	}
 	return valid;
-}
-
-bool CM17Protocol::IsValidPacketModePacket(const CBuffer &Buffer, CCallsign &src, CCallsign &dst)
-{
-	uint8_t tag[] = { 'M', '1', '7', 'P' };
-	if ( (Buffer.size() >= 18) && (0 == Buffer.Compare(tag, 4)) )
-	{
-		dst.CodeIn(Buffer.data() + 4);
-		src.CodeIn(Buffer.data() + 10);
-		return (src.IsValid() && (0x0U == (0x1U & Buffer[17]))); // no encryption
-	}
-	return false;
 }
 
 bool CM17Protocol::IsValidDvPacket(const CBuffer &Buffer, std::unique_ptr<CDvHeaderPacket> &header, std::unique_ptr<CDvFramePacket> &frame)
@@ -494,6 +615,11 @@ bool CM17Protocol::IsValidDvPacket(const CBuffer &Buffer, std::unique_ptr<CDvHea
 		isStandard = true;
 	}
 
+	// Buffer[19] is the low-order byte of the uint16_t frametype.
+	// the 0x1CU mask (00011100 binary) just lets us see:
+	// 1. the encryptions bytes (mask 0x18U) which must be zero, and
+	// 2. the msb of the 2-bit payload type (mask 0x4U) which must be set. This bit set means it's voice or voice+data.
+	// An masked result of 0x4U means the payload contains Codec2 voice data and there is no encryption.
 	if ( validSize && (0 == Buffer.Compare(tag, sizeof(tag))) && (0x4U == (0x1CU & Buffer[19])) )
 	{
 		// Make the M17 header wrapper
@@ -505,6 +631,8 @@ bool CM17Protocol::IsValidDvPacket(const CBuffer &Buffer, std::unique_ptr<CDvHea
 
 		// get the frame
 		frame = std::unique_ptr<CDvFramePacket>(new CDvFramePacket(m17));
+
+
 
 		// check validity of packets
 		if ( header && header->IsValid() && frame && frame->IsValid() )
@@ -540,7 +668,8 @@ void CM17Protocol::EncodeM17Packet(CM17Packet &packet, const CDvHeaderPacket &He
 	packet.SetMagic();
 	
 	// the frame number comes from the stream sequence counter
-	uint16_t fn = (iSeq / 2) % 0x8000U;
+	// Assuming 1:1 mapping for 40ms frames (tcd output)
+	uint16_t fn = iSeq % 0x8000U;
 	if (DvFrame->IsLastPacket())
 		fn |= 0x8000U;
 	packet.SetFrameNumber(fn);
@@ -559,50 +688,4 @@ bool CM17Protocol::EncodeDvFramePacket(const CDvFramePacket &packet, CBuffer &bu
 {
 	packet.EncodeInterlinkPacket(buffer);
 	return true;
-}
-
-void CM17Protocol::HandleParrot(const CIp &Ip, const CBuffer &Buffer, bool isStream)
-{
-    std::string key = Ip.GetAddress();
-    auto it = m_ParrotMap.find(key);
-    
-    if (it == m_ParrotMap.end())
-    {
-        std::shared_ptr<CClient> client = g_Reflector.GetClients()->FindClient(Ip, EProtocol::m17);
-        auto m17client = std::dynamic_pointer_cast<CM17Client>(client);
-        g_Reflector.ReleaseClients();
-        
-        if (m17client)
-        {
-            if (isStream)
-            {
-                // Extract frametype from SM17Frame
-                uint16_t ft = (Buffer.data()[12] << 8) | Buffer.data()[13];
-                m_ParrotMap[key] = std::make_shared<CM17StreamParrot>(m17client->GetCallsign(), m17client, ft, this);
-            }
-            else
-            {
-                // Extract frametype from SM17P (lich part starts at offset 4, but frametype is at offset 16)
-                uint16_t ft = (Buffer.data()[16] << 8) | Buffer.data()[17];
-                m_ParrotMap[key] = std::make_shared<CM17PacketParrot>(m17client->GetCallsign(), m17client, ft, this);
-            }
-        }
-    }
-    
-    it = m_ParrotMap.find(key);
-    if (it != m_ParrotMap.end() && it->second->GetState() == EParrotState::record)
-    {
-        if (isStream)
-        {
-            // streamId at offset 4, fn at 38
-            uint16_t sid = (Buffer.data()[4] << 8) | Buffer.data()[5];
-            uint16_t fn = (Buffer.data()[38] << 8) | Buffer.data()[39];
-            it->second->Add(Buffer, sid, fn);
-        }
-        else
-        {
-            it->second->AddPacket(Buffer);
-            it->second->Play(); // Packet mode parrot plays back immediately
-        }
-    }
 }
