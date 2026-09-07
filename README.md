@@ -1,5 +1,7 @@
 ﻿# Universal, Multi-protocol Digital Voice Reflector
 
+> **Note:** This is a fork, **not** the official repository maintained by Doug McCain (AD8DP), a.k.a. "Nostar". Doug's upstream repository (nostar/urfd) has several open, unmerged pull requests and has otherwise been silent/unmaintained for a while. This fork carries those pending PRs applied, along with some additional fixes made since.
+
 The URF Multi-protocol Gateway Reflector Server, ***urfd***, is part of the software system for a Digital Voice Network. The sources are published under GPL Licenses.
 
 ## Introduction
