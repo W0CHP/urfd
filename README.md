@@ -45,7 +45,7 @@ sudo apt upgrade
 ### Required packages (some of these may already be installed)
 
 ```bash
-sudo apt install git apache2 php build-essential nlohmann-json3-dev libcurl4-gnutls-dev
+sudo apt install git apache2 php build-essential nlohmann-json3-dev libcurl4-gnutls-dev libopus-dev libogg-dev libnng-dev
 ```
 
 On the latest systems. *e.g.*, Ubuntu 24, Debian 12, you can install the OpenDHT support without having to build it.
