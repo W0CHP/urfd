@@ -51,9 +51,6 @@ bool CDmrmmdvmClient::IsAlive(void) const
 // Multi-Module Reporting for Dashboard
 void CDmrmmdvmClient::JsonReport(nlohmann::json &report)
 {
-    // DEBUG: Check XLX Mode
-    // std::cout << "DEBUG: XLX Mode Comp: " << g_Configure.GetBoolean(g_Keys.dmr.xlx) << std::endl;
-
 	if (g_Configure.GetBoolean(g_Keys.dmr.xlx)) {
         // Legacy behavior
         CClient::JsonReport(report);

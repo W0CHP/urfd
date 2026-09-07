@@ -157,7 +157,6 @@ void CUSRPProtocol::Task(void)
 		else if ( IsValidDvLastPacket(Buffer) )
 		{
 			// do nothing
-			std::cout << "USRP_KEYUP_FALSE received" << std::endl; // DEBUG
 		}
 		else
 		{

@@ -119,9 +119,6 @@ protected:
 	// for authentication
 	uint32_t              m_uiAuthSeed;
 
-    // for debug logging
-    int                   m_debugFrameCount;
-
 	// config data
 	unsigned m_DefaultId;
 };

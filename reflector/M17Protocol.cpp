@@ -177,7 +177,6 @@ void CM17Protocol::Task(void)
                 else
                 {
                     // Fallback for unknown/other types
-                    std::cout << "DEBUG: M17 Fallback Push" << std::endl;
                     OnDvFramePacketIn(Frame, &Ip);
                 }
 			}
@@ -392,9 +391,7 @@ void CM17Protocol::OnDvHeaderPacketIn(std::unique_ptr<CDvHeaderPacket> &Header, 
 		// update last heard
         CCallsign reflectorCall = rpt2;
         reflectorCall.SetCSModule(rpt2Module);
-		std::cout << "DEBUG: Calling GetUsers()->Hearing for " << my.GetCS() << "..." << std::endl;
 		g_Reflector.GetUsers()->Hearing(my, rpt1, rpt2, reflectorCall, EProtocol::m17);
-		std::cout << "DEBUG: Returned from GetUsers()->Hearing" << std::endl;
 		g_Reflector.ReleaseUsers();
 	}
 }
