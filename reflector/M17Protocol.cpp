@@ -290,7 +290,9 @@ void CM17Protocol::OnDvHeaderPacketIn(std::unique_ptr<CDvHeaderPacket> &Header, 
 		g_Reflector.ReleaseClients();
 
 		// update last heard
-		g_Reflector.GetUsers()->Hearing(my, rpt1, rpt2);
+        CCallsign reflectorCall = rpt2;
+        reflectorCall.SetCSModule(Header->GetRpt2Module());
+		g_Reflector.GetUsers()->Hearing(my, rpt1, rpt2, reflectorCall, EProtocol::m17);
 		g_Reflector.ReleaseUsers();
 	}
 }
@@ -547,18 +549,16 @@ void CM17Protocol::EncodeM17Packet(CM17Packet &packet, const CDvHeaderPacket &He
 	// the CRC will be set in HandleQueue, after lich.dest is set
 }
 
-bool CM17Protocol::EncodeDvHeaderPacket(const CDvHeaderPacket &Header, CBuffer &Buffer) const
+bool CM17Protocol::EncodeDvHeaderPacket(const CDvHeaderPacket &packet, CBuffer &buffer) const
 {
-    (void)Header;
-    (void)Buffer;
-    return false; // M17 uses EncodeM17Packet
+	packet.EncodeInterlinkPacket(buffer);
+	return true;
 }
 
-bool CM17Protocol::EncodeDvFramePacket(const CDvFramePacket &Frame, CBuffer &Buffer) const
+bool CM17Protocol::EncodeDvFramePacket(const CDvFramePacket &packet, CBuffer &buffer) const
 {
-    (void)Frame;
-    (void)Buffer;
-    return false; // M17 uses EncodeM17Packet
+	packet.EncodeInterlinkPacket(buffer);
+	return true;
 }
 
 void CM17Protocol::HandleParrot(const CIp &Ip, const CBuffer &Buffer, bool isStream)
