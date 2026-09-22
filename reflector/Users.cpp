@@ -73,7 +73,7 @@ void CUsers::Hearing(const CCallsign &my, const CCallsign &rpt1, const CCallsign
     event["via_peer"] = xlx.GetCS();
     event["module"] = std::string(1, rpt2.GetCSModule());
     event["protocol"] = g_GateKeeper.ProtocolName(protocol);
-    g_NNGPublisher.Publish(event);
+    g_NNGPublisher.Queue(std::move(event));
 }
 
 void CUsers::Closing(const CCallsign &my, char module, EProtocol protocol, const std::string& recording)
@@ -85,5 +85,5 @@ void CUsers::Closing(const CCallsign &my, char module, EProtocol protocol, const
 	event["protocol"] = g_GateKeeper.ProtocolName(protocol);
 	if (!recording.empty())
 		event["recording"] = recording;
-	g_NNGPublisher.Publish(event);
+	g_NNGPublisher.Queue(std::move(event));
 }

@@ -5,7 +5,7 @@
 #include <sstream>
 
 CNNGPublisher::CNNGPublisher()
-    : m_started(false)
+    : m_started(false), m_Dropped(0)
 {
     m_sock.id = 0;
 }
@@ -39,6 +39,11 @@ bool CNNGPublisher::Start(const std::string &addr)
 
 void CNNGPublisher::Stop()
 {
+    // Flush whatever is still queued while the socket is still open. Drain()
+    // takes m_mutex by way of Publish(), so it has to happen before we take it
+    // here.
+    Drain();
+
     std::lock_guard<std::mutex> lock(m_mutex);
     if (!m_started) return;
 
@@ -67,6 +72,47 @@ nlohmann::json CNNGPublisher::NewEvent(const char *type)
         event["timestamp"] = s;
 
     return event;
+}
+
+void CNNGPublisher::Queue(nlohmann::json &&event)
+{
+    // Nothing drains the queue when the publisher is off, so don't fill it.
+    if (!m_started) return;
+
+    std::lock_guard<std::mutex> lock(m_QueueMutex);
+
+    if (m_Queue.size() >= NNG_QUEUE_MAX)
+    {
+        // Drop rather than grow. NNG itself already drops on backpressure, so
+        // the event stream is lossy by design -- but it must not be lossy
+        // silently, hence the counter.
+        m_Dropped++;
+        return;
+    }
+
+    m_Queue.push(std::move(event));
+}
+
+void CNNGPublisher::Drain()
+{
+    std::queue<nlohmann::json> batch;
+    size_t dropped = 0;
+
+    {
+        std::lock_guard<std::mutex> lock(m_QueueMutex);
+        batch.swap(m_Queue);
+        dropped = m_Dropped;
+        m_Dropped = 0;
+    }
+
+    if (dropped)
+        std::cerr << "NNG: dropped " << dropped << " event(s), queue full" << std::endl;
+
+    while (!batch.empty())
+    {
+        Publish(batch.front());
+        batch.pop();
+    }
 }
 
 void CNNGPublisher::Publish(const nlohmann::json &event)
