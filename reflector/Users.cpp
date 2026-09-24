@@ -72,7 +72,7 @@ void CUsers::Hearing(const CCallsign &my, const CCallsign &rpt1, const CCallsign
     event["ur"] = rpt1.GetCS();
     event["rpt1"] = rpt2.GetCS();
     event["rpt2"] = xlx.GetCS();
-    event["module"] = std::string(1, xlx.GetCSModule());
+    event["module"] = std::string(1, rpt2.GetCSModule());
     event["protocol"] = g_GateKeeper.ProtocolName(protocol);
     g_NNGPublisher.Publish(event);
 }
