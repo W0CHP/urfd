@@ -22,9 +22,11 @@
 #include "Global.h"
 
 #ifndef NO_DHT
-// The port urfd's DHT has always used, for this node and for the bootstrap peer.
-static constexpr in_port_t DHT_PORT = 17171;
-static constexpr const char *DHT_PORT_STR = "17171";
+// The port every urfd DHT node has always listened on, and therefore the port a
+// bootstrap peer is reached on. This reflector's own port is configurable --
+// [Names]DhtPort -- so that two reflectors can share a host; the bootstrap
+// peer's is not ours to choose.
+static constexpr const char *DHT_BOOTSTRAP_PORT = "17171";
 #endif
 
 CReflector::CReflector() {}
@@ -62,18 +64,19 @@ bool CReflector::Start(void)
 #ifndef NO_DHT
 	// start the dht instance
 	refhash = dht::InfoHash::get(cs);
+	const auto dhtport = (in_port_t)g_Configure.GetUnsigned(g_Keys.names.dhtport);
 	try
 	{
-		node.run(DHT_PORT, dht::crypto::generateIdentity(cs), true, 59973);
-		// the port here is the bootstrap peer's, not ours
-		node.bootstrap(g_Configure.GetString(g_Keys.names.bootstrap), DHT_PORT_STR);
+		node.run(dhtport, dht::crypto::generateIdentity(cs), true, 59973);
+		node.bootstrap(g_Configure.GetString(g_Keys.names.bootstrap), DHT_BOOTSTRAP_PORT);
 	}
 	catch (const std::exception &e)
 	{
 		// The DHT is how reflectors find each other, not how voice is routed,
 		// so this is not worth refusing to start over. Say so loudly instead.
-		std::cerr << "WARNING: could not start the DHT on port " << DHT_PORT << ": " << e.what() << std::endl;
+		std::cerr << "WARNING: could not start the DHT on port " << dhtport << ": " << e.what() << std::endl;
 		std::cerr << "WARNING: another urfd or DHT client on this host is probably already using it" << std::endl;
+		std::cerr << "WARNING: set [Names]DhtPort to a free port, or to 0 to let the system choose one" << std::endl;
 		std::cerr << "WARNING: " << cs << " is running WITHOUT the DHT:" << std::endl;
 		std::cerr << "WARNING:   - this reflector will not publish its own configuration for others to find" << std::endl;
 		std::cerr << "WARNING:   - interlink peers listed without an IP address will not resolve" << std::endl;

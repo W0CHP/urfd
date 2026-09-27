@@ -53,6 +53,7 @@ static inline void trim(std::string &s) {
 #define JBINDINGADDRESS          "BindingAddress"
 #define JBLACKLISTPATH           "BlacklistPath"
 #define JBOOTSTRAP               "Bootstrap"
+#define JDHTPORT                  "DhtPort"
 #define JBRANDMEISTER            "Brandmeister"
 #define JCALLSIGN                "Callsign"
 #define JCOUNTRY                 "Country"
@@ -131,6 +132,7 @@ CConfigure::CConfigure()
 	IPv6RegEx = std::regex("^(([0-9a-fA-F]{1,4}:){7,7}[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,7}:|([0-9a-fA-F]{1,4}:){1,6}(:[0-9a-fA-F]{1,4}){1,1}|([0-9a-fA-F]{1,4}:){1,5}(:[0-9a-fA-F]{1,4}){1,2}|([0-9a-fA-F]{1,4}:){1,4}(:[0-9a-fA-F]{1,4}){1,3}|([0-9a-fA-F]{1,4}:){1,3}(:[0-9a-fA-F]{1,4}){1,4}|([0-9a-fA-F]{1,4}:){1,2}(:[0-9a-fA-F]{1,4}){1,5}|([0-9a-fA-F]{1,4}:){1,1}(:[0-9a-fA-F]{1,4}){1,6}|:((:[0-9a-fA-F]{1,4}){1,7}|:))$", std::regex::extended);
 
 	data[g_Keys.dashboard.nngaddr] = "tcp://127.0.0.1:5555";
+	data[g_Keys.names.dhtport] = 17171U;
 	data[g_Keys.dashboard.interval] = 10U;
 	data[g_Keys.dashboard.enable] = false;
 	data[g_Keys.dashboard.debug] = false;
@@ -284,6 +286,8 @@ bool CConfigure::ReadData(const std::string &path)
 					data[g_Keys.names.callsign] = value;
 				else if (0 == key.compare(JBOOTSTRAP))
 					data[g_Keys.names.bootstrap] = value;
+				else if (0 == key.compare(JDHTPORT))
+					data[g_Keys.names.dhtport] = getUnsigned(value, JDHTPORT, 0, 65535, 17171);
 				else if (0 == key.compare(JDASHBOARDURL))
 					data[g_Keys.names.url] = value;
 				else if (0 == key.compare(JSYSOPEMAIL))
