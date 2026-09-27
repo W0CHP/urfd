@@ -21,6 +21,14 @@
 
 #include "Global.h"
 
+#ifndef NO_DHT
+// The port every urfd DHT node has always listened on, and therefore the port a
+// bootstrap peer is reached on. This reflector's own port is configurable --
+// [Names]DhtPort -- so that two reflectors can share a host; the bootstrap
+// peer's is not ours to choose.
+static constexpr const char *DHT_BOOTSTRAP_PORT = "17171";
+#endif
+
 CReflector::CReflector() {}
 
 CReflector::~CReflector()
@@ -56,8 +64,24 @@ bool CReflector::Start(void)
 #ifndef NO_DHT
 	// start the dht instance
 	refhash = dht::InfoHash::get(cs);
-	node.run(17171, dht::crypto::generateIdentity(cs), true, 59973);
-	node.bootstrap(g_Configure.GetString(g_Keys.names.bootstrap), "17171");
+	const auto dhtport = (in_port_t)g_Configure.GetUnsigned(g_Keys.names.dhtport);
+	try
+	{
+		node.run(dhtport, dht::crypto::generateIdentity(cs), true, 59973);
+		node.bootstrap(g_Configure.GetString(g_Keys.names.bootstrap), DHT_BOOTSTRAP_PORT);
+	}
+	catch (const std::exception &e)
+	{
+		// The DHT is how reflectors find each other, not how voice is routed,
+		// so this is not worth refusing to start over. Say so loudly instead.
+		std::cerr << "WARNING: could not start the DHT on port " << dhtport << ": " << e.what() << std::endl;
+		std::cerr << "WARNING: another urfd or DHT client on this host is probably already using it" << std::endl;
+		std::cerr << "WARNING: set [Names]DhtPort to a free port, or to 0 to let the system choose one" << std::endl;
+		std::cerr << "WARNING: " << cs << " is running WITHOUT the DHT:" << std::endl;
+		std::cerr << "WARNING:   - this reflector will not publish its own configuration for others to find" << std::endl;
+		std::cerr << "WARNING:   - interlink peers listed without an IP address will not resolve" << std::endl;
+		std::cerr << "WARNING: everything else, including all voice traffic, is unaffected" << std::endl;
+	}
 #endif
 
 	// let's go!
@@ -174,13 +198,16 @@ void CReflector::Stop(void)
 	g_LYtr.LookupClose();
 
 #ifndef NO_DHT
-	// kill the DHT
-	node.cancelPut(refhash, toUType(EUrfdValueID::Config));
-	node.cancelPut(refhash, toUType(EUrfdValueID::Peers));
-	node.cancelPut(refhash, toUType(EUrfdValueID::Clients));
-	node.cancelPut(refhash, toUType(EUrfdValueID::Users));
-	node.shutdown({}, true);
-	node.join();
+	// kill the DHT, if it ever came up
+	if (node.isRunning())
+	{
+		node.cancelPut(refhash, toUType(EUrfdValueID::Config));
+		node.cancelPut(refhash, toUType(EUrfdValueID::Peers));
+		node.cancelPut(refhash, toUType(EUrfdValueID::Clients));
+		node.cancelPut(refhash, toUType(EUrfdValueID::Users));
+		node.shutdown({}, true);
+		node.join();
+	}
 #endif
 }
 
@@ -601,6 +628,10 @@ void CReflector::WriteXmlFile(std::ofstream &xmlFile)
 // DHT put() and get()
 void CReflector::PutDHTConfig()
 {
+	if (! node.isRunning())
+		return;	// the DHT did not start; Start() has already said so
+
+
 	const std::string cs(g_Configure.GetString(g_Keys.names.callsign));
 	SUrfdConfig1 cfg;
 	time(&cfg.timestamp);
@@ -656,6 +687,12 @@ void CReflector::PutDHTConfig()
 
 void CReflector::GetDHTConfig(const std::string &cs)
 {
+	if (! node.isRunning())
+	{
+		std::cerr << "Cannot look up " << cs << ": this reflector is running without the DHT" << std::endl;
+		return;
+	}
+
 	static SUrfdConfig1 cfg;
 	cfg.timestamp = 0;	// every time this is called, zero the timestamp
 
