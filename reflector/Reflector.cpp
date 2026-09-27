@@ -399,12 +399,17 @@ void CReflector::MaintenanceThread()
 				{
 					nngCounter = 0;
 					// Removed spammy log: std::cout << "NNG debug: Periodic state broadcast..." << std::endl;
-					nlohmann::json state;
-					state["type"] = "state";
+					auto state = CNNGPublisher::NewEvent("state");
 					JsonReport(state);
-					g_NNGPublisher.Publish(state);
+					g_NNGPublisher.Queue(std::move(state));
 				}
-                
+
+				// Send whatever protocol threads have raised since the last
+				// pass. This is the only place events reach the socket, and it
+				// runs here rather than at the call sites so that no reflector
+				// mutex is held while an event is serialized and sent.
+				g_NNGPublisher.Drain();
+
                 // Log aggregated stats every ~2 minutes (assuming loop runs every 10s * XML_UPDATE_PERIOD=10 = 100s per cycle? No wait)
                 // XML_UPDATE_PERIOD is 10. Loop is XML_UPDATE_PERIOD * 10 = 100 iterations.
                 // Sleep is 100ms. So loop is 10s total.

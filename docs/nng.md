@@ -40,7 +40,15 @@ graph TD
 
 ## Messaging Protocols
 
-Events are sent as serialized JSON strings. Each message contains a `type` field to identify the payload structure.
+Events are sent as serialized JSON strings. Every message carries the same three envelope fields, whatever its type:
+
+| Field | Meaning |
+|---|---|
+| `type` | Identifies the payload structure. |
+| `reflector` | Callsign of the reflector that emitted the event. Lets one subscriber watch several reflectors without inferring identity from which socket delivered the message. |
+| `timestamp` | UTC time the event was **observed**, `%FT%TZ`. Stamped where the event occurs, not where it is sent, so it stays correct if the event is queued before reaching the socket. |
+
+Note that `callsign`, where a payload carries one, always refers to the station the event is *about* — never to the reflector.
 
 ### 1. State Broadcast (`state`)
 
@@ -51,6 +59,8 @@ Sent periodically based on `DashboardInterval` (default 10s). It provides a full
 ```json
 {
   "type": "state",
+  "reflector": "URF123",
+  "timestamp": "2026-09-22T14:03:11Z",
   "Configure": {
     "Key": "Value",
     ...
@@ -98,6 +108,8 @@ Triggered immediately when a client (Repeater, Hotspot, or Mobile App) links or 
 ```json
 {
   "type": "client_connect",
+  "reflector": "URF123",
+  "timestamp": "2026-09-22T14:03:11Z",
   "callsign": "N7TAE",
   "ip": "1.2.3.4",
   "protocol": "DMR",
@@ -114,10 +126,12 @@ Triggered when the reflector "hears" an active transmission. This event is sent 
 ```json
 {
   "type": "hearing",
-  "my": "G4XYZ",
-  "ur": "CQCQCQ",
-  "rpt1": "GB3NB",
+  "reflector": "URF123",
+  "timestamp": "2026-09-22T14:03:11Z",
+  "callsign": "G4XYZ",
+  "repeater": "GB3NB",
   "rpt2": "XLX123 A",
+  "via_peer": "XLX123",
   "module": "A",
   "protocol": "M17"
 }
@@ -132,7 +146,9 @@ Triggered when a transmission stream is closed (user stops talking).
 ```json
 {
   "type": "closing",
-  "my": "G4XYZ",
+  "reflector": "URF123",
+  "timestamp": "2026-09-22T14:03:11Z",
+  "callsign": "G4XYZ",
   "module": "A",
   "protocol": "M17"
 }
@@ -143,3 +159,4 @@ Triggered when a transmission stream is closed (user stops talking).
 1. **Late Joining**: The `state` message is broadcast periodically to ensure a middle-tier connecting at any time (or reconnecting) can synchronize its internal state without waiting for new events.
 2. **Active Talkers**: The `ActiveTalkers` array in the `state` message identifies who is currently keyed up. Real-time transitions (start/stop) are driven by the `hearing` events and the absence of such events over a timeout (typically 2-3 seconds).
 3. **Deduplication**: The `state` report is a snapshot. If the middle-tier is already tracking events, it can use the `state` report to "re-base" its state and clear out stale data.
+4. **Delivery is lossy, in two places.** Events are queued as they occur and sent from the maintenance thread every 100ms, so an event reaches the socket up to 100ms after the `timestamp` it carries — order by `timestamp`, not by arrival. If that queue is full the event is discarded and counted, and the reflector logs `NNG: dropped N event(s), queue full`. Beyond that, `nng_send` itself uses `NNG_FLAG_NONBLOCK`, so a subscriber too slow to read has messages dropped for it with no notice at either end. A middle tier must not treat the event stream as a complete record; the periodic `state` snapshot is what makes it self-correcting.

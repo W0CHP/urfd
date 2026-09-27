@@ -62,13 +62,12 @@ void CClients::AddClient(std::shared_ptr<CClient> client)
 	std::cout << std::endl;
 
     // dashboard event
-    nlohmann::json event;
-    event["type"] = "client_connect";
+    auto event = CNNGPublisher::NewEvent("client_connect");
     event["callsign"] = client->GetCallsign().GetCS();
     event["ip"] = client->GetIp().GetAddress();
     event["protocol"] = client->GetProtocolName();
     event["module"] = std::string(1, client->GetReflectorModule());
-    g_NNGPublisher.Publish(event);
+    g_NNGPublisher.Queue(std::move(event));
 }
 
 void CClients::RemoveClient(std::shared_ptr<CClient> client)
@@ -91,13 +90,12 @@ void CClients::RemoveClient(std::shared_ptr<CClient> client)
 				std::cout << std::endl;
 
                 // dashboard event
-                nlohmann::json event;
-                event["type"] = "client_disconnect";
+                auto event = CNNGPublisher::NewEvent("client_disconnect");
                 event["callsign"] = (*it)->GetCallsign().GetCS();
                 event["ip"] = (*it)->GetIp().GetAddress();
                 event["protocol"] = (*it)->GetProtocolName();
                 event["module"] = std::string(1, (*it)->GetReflectorModule());
-                g_NNGPublisher.Publish(event);
+                g_NNGPublisher.Queue(std::move(event));
 
 				m_Clients.erase(it);
 				break;
