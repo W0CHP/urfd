@@ -54,6 +54,7 @@ static inline void trim(std::string &s) {
 #define JBLACKLISTPATH           "BlacklistPath"
 #define JBOOTSTRAP               "Bootstrap"
 #define JDHTPORT                  "DhtPort"
+#define JREGISTRATION             "Registration"
 #define JBRANDMEISTER            "Brandmeister"
 #define JCALLSIGN                "Callsign"
 #define JCOUNTRY                 "Country"
@@ -133,6 +134,14 @@ CConfigure::CConfigure()
 
 	data[g_Keys.dashboard.nngaddr] = "tcp://127.0.0.1:5555";
 	data[g_Keys.names.dhtport] = 17171U;
+	// Registration is opt-in: an existing install keeps doing whatever its
+	// dashboard does until a sysop moves it deliberately.
+	data[g_Keys.registration.enable] = false;
+	data[g_Keys.registration.url] = "http://xlxapi.rlx.lu/api.php";
+	data[g_Keys.registration.interval] = 3600U;
+	data[g_Keys.registration.hashfile] = "/usr/local/etc/urfd.registration";
+	data[g_Keys.registration.comment] = "";
+	data[g_Keys.registration.overrideip] = "";
 	data[g_Keys.dashboard.interval] = 10U;
 	data[g_Keys.dashboard.enable] = false;
 	data[g_Keys.dashboard.debug] = false;
@@ -206,6 +215,8 @@ bool CConfigure::ReadData(const std::string &path)
 				section = ESection::tc;
 			else if (0 == hname.compare(JDASHBOARD))
 				section = ESection::dashboard;
+			else if (0 == hname.compare(JREGISTRATION))
+				section = ESection::registration;
 			else if (0 == hname.compare(JMODULES))
 				section = ESection::modules;
 			else if (0 == hname.compare(JDPLUS))
@@ -547,6 +558,24 @@ bool CConfigure::ReadData(const std::string &path)
 					data[g_Keys.dashboard.interval] = getUnsigned(value, "Dashboard Interval", 1, 3600, 10);
 				else if (0 == key.compare("NNGDebug"))
 					data[g_Keys.dashboard.debug] = IS_TRUE(value[0]);
+				else
+					badParam(key);
+				break;
+			case ESection::registration:
+				if (0 == key.compare(JENABLE))
+					data[g_Keys.registration.enable] = IS_TRUE(value[0]);
+				else if (0 == key.compare("Url"))
+					data[g_Keys.registration.url] = value;
+				else if (0 == key.compare("Interval"))
+					// 5 minutes is already far more often than any list needs;
+					// a day is the longest that still counts as "registered".
+					data[g_Keys.registration.interval] = getUnsigned(value, "Registration Interval", 300, 86400, 3600);
+				else if (0 == key.compare("HashFile"))
+					data[g_Keys.registration.hashfile] = value;
+				else if (0 == key.compare("Comment"))
+					data[g_Keys.registration.comment] = value;
+				else if (0 == key.compare("OverrideIP"))
+					data[g_Keys.registration.overrideip] = value;
 				else
 					badParam(key);
 				break;
