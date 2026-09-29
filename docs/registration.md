@@ -27,7 +27,7 @@ Registration is a property of the service, so the service does it.
 [Registration]
 Enable   = false
 Url      = http://xlxapi.rlx.lu/api.php
-Interval = 3600
+Interval = 300
 HashFile = /usr/local/etc/urfd.registration
 #Comment =
 #OverrideIP =
@@ -37,13 +37,36 @@ HashFile = /usr/local/etc/urfd.registration
 |---|---|
 | `Enable` | Off by default. Nothing changes on an existing install until you turn it on. |
 | `Url` | The reflector list's API endpoint. |
-| `Interval` | Seconds between registrations, 300–86400. The first push happens 30 s after startup, so a restart refreshes the listing. |
+| `Interval` | Seconds between registrations, 300–86400. The first push happens 30 s after startup, so a restart refreshes the listing. **Do not set this above 600** — see below. |
 | `HashFile` | One line of plain text: this reflector's identity. Created on first run if absent. **Back it up.** |
 | `Comment` | Up to 100 characters. Defaults to `[Names]Sponsor`. |
 | `OverrideIP` | Leave blank to let the list autodetect the address. |
 
 The callsign, country, dashboard URL, version, uptime and interlink list all come
 from the running reflector. There is nothing to keep in step by hand.
+
+## Why the interval has to stay under 600 seconds
+
+The reflector list's own dashboard decides whether a reflector is up by looking at
+nothing but the age of its last contact (`dashboard/pgs/reflectors.php`):
+
+```php
+if ($LASTCONTACT < (time() - 600)) { echo 'down'; } ELSE { echo 'up'; }
+```
+
+Ten minutes, and that is the whole test. It does not probe the reflector, so a
+reflector that registers less often than that shows as **down** for most of every
+cycle while being perfectly healthy. An hourly interval, for instance, reads as
+down for about 83% of the time.
+
+The default of 300 leaves a full interval of margin: one missed registration still
+lands inside the window. urfd warns at startup if the interval is set above 600,
+because the symptom — a red icon on a working reflector — is not obviously a
+configuration problem.
+
+For context on how gentle this still is: the dashboard's `PushDelay` ships at 10
+seconds, so a browsed dashboard re-registered up to 360 times an hour. This
+registers 12 times an hour, on a fixed schedule, whether anyone is looking or not.
 
 ## Moving an already-listed reflector
 

@@ -67,6 +67,15 @@ bool CRegistration::Init(void)
 	// instantly: let the protocols and the interlink map settle first.
 	m_NextDue = std::time(nullptr) + 30;
 	std::cout << "Registration: " << m_Url << " every " << m_Interval << "s, first push in 30s" << std::endl;
+	if (m_Interval > 600)
+	{
+		// Worth saying once rather than leaving someone to wonder why a healthy
+		// reflector shows as down on the list most of the time.
+		std::cout << "Registration: note that the reflector list's dashboard marks a reflector red" << std::endl;
+		std::cout << "Registration: once its last contact is over 600s old, so an interval of "
+				  << m_Interval << "s will" << std::endl;
+		std::cout << "Registration: show this reflector as down for most of every cycle" << std::endl;
+	}
 	return true;
 }
 

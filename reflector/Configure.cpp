@@ -138,7 +138,11 @@ CConfigure::CConfigure()
 	// dashboard does until a sysop moves it deliberately.
 	data[g_Keys.registration.enable] = false;
 	data[g_Keys.registration.url] = "http://xlxapi.rlx.lu/api.php";
-	data[g_Keys.registration.interval] = 3600U;
+	// 300, not something more relaxed: the reflector list's own dashboard marks a
+	// reflector red once lastcontact is more than 600 seconds old
+	// (dashboard/pgs/reflectors.php), so a longer interval shows the reflector as
+	// down for most of every cycle even when it is perfectly healthy.
+	data[g_Keys.registration.interval] = 300U;
 	data[g_Keys.registration.hashfile] = "/usr/local/etc/urfd.registration";
 	data[g_Keys.registration.comment] = "";
 	data[g_Keys.registration.overrideip] = "";
@@ -567,9 +571,10 @@ bool CConfigure::ReadData(const std::string &path)
 				else if (0 == key.compare("Url"))
 					data[g_Keys.registration.url] = value;
 				else if (0 == key.compare("Interval"))
-					// 5 minutes is already far more often than any list needs;
-					// a day is the longest that still counts as "registered".
-					data[g_Keys.registration.interval] = getUnsigned(value, "Registration Interval", 300, 86400, 3600);
+					// The floor is 5 minutes, which is already far gentler than
+					// the dashboard's 10-second PushDelay. The ceiling is a day,
+					// the longest gap that still counts as "registered" at all.
+					data[g_Keys.registration.interval] = getUnsigned(value, "Registration Interval", 300, 86400, 300);
 				else if (0 == key.compare("HashFile"))
 					data[g_Keys.registration.hashfile] = value;
 				else if (0 == key.compare("Comment"))
